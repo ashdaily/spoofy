@@ -98,24 +98,27 @@ nothing on it worth looking at.
 
 ```mermaid
 flowchart LR
-    SPEC[OpenAPI spec<br/>file or URL] --> OPS[Operations]
-    OPS --> SEL{Filter}
-    SEL -->|reads only<br/>by default| PICK[Weighted pick]
-    SEL -.->|writes need<br/>--allow-writes| PICK
+    SPEC["OpenAPI spec<br/>file or URL"] --> OPS["Operations"]
+    OPS --> SEL{"Filter"}
+    SEL -->|"reads, by default"| PICK["Weighted pick"]
+    SEL -.->|"writes, opt in"| PICK
 
-    SHAPE[Traffic shape<br/>constant · diurnal<br/>ramp · spike] --> PACE[Rate limiter]
+    SHAPE["Traffic shape<br/>constant · diurnal<br/>ramp · spike"] --> PACE["Rate limiter"]
     PACE --> PICK
 
-    PICK --> GEN[Build request<br/>params · body · auth]
-    GEN --> SEND[Send]
-    SEND --> TGT[(Your API)]
-    SEND --> MET[/metrics]
-    SEND --> TUI[Live view]
+    PICK --> GEN["Build request<br/>params · body · auth"]
+    GEN --> SEND["Send"]
+    SEND --> TGT[("Your API")]
+    SEND --> MET["Prometheus<br/>/metrics"]
+    SEND --> TUI["Live view"]
 
-    style SPEC fill:#1f2b3d,stroke:#5794F2,color:#e6edf3
-    style SHAPE fill:#1f2b3d,stroke:#5794F2,color:#e6edf3
-    style TGT fill:#2d1f2b,stroke:#B877D9,color:#e6edf3
-    style MET fill:#1f2d24,stroke:#56A64B,color:#e6edf3
+    classDef input fill:#dbeafe,stroke:#2563eb,color:#0f172a
+    classDef target fill:#f3e8ff,stroke:#9333ea,color:#0f172a
+    classDef output fill:#dcfce7,stroke:#16a34a,color:#0f172a
+
+    class SPEC,SHAPE input
+    class TGT target
+    class MET,TUI output
 ```
 
 **Values come from the spec before they come from a random number generator:**
