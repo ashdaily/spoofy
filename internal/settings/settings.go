@@ -124,9 +124,15 @@ type EndpointRule struct {
 	// Match is a glob against the templated path, e.g. "/orders/{id}" or
 	// "/admin/*". "*" spans any characters including "/".
 	Match string `yaml:"match"`
-	// Skip excludes matching endpoints entirely.
+	// Skip excludes matching endpoints entirely. This is the only way to
+	// exclude something — weight is purely a bias.
 	Skip bool `yaml:"skip"`
-	// Weight biases selection. 1 is the default; 5 means five times as likely.
+	// Weight biases selection. Unset means 1; 5 means five times as likely.
+	//
+	// Zero is treated as unset rather than as an exclusion. YAML cannot tell
+	// an omitted number from an explicit 0 without a pointer, so making 0 mean
+	// "never send this" would silently drop every rule written as a bare
+	// `- match: /orders` — a rule whose author plainly meant to include it.
 	Weight float64 `yaml:"weight"`
 }
 
@@ -426,7 +432,7 @@ func (c *Config) PathAllowed(templatedPath string) bool {
 	if rule == nil {
 		return true
 	}
-	return !rule.Skip && rule.Weight != 0
+	return !rule.Skip
 }
 
 // WeightFor returns the selection weight for a templated path, defaulting to 1.

@@ -149,7 +149,7 @@ func TestEndpointRules(t *testing.T) {
 	cfg.Endpoints = []EndpointRule{
 		{Match: "/admin/*", Skip: true},
 		{Match: "/orders", Weight: 5},
-		{Match: "/health", Weight: 0}, // weight 0 is an exclusion
+		{Match: "/health"}, // no weight given
 	}
 
 	if cfg.PathAllowed("/admin/users") {
@@ -158,14 +158,27 @@ func TestEndpointRules(t *testing.T) {
 	if !cfg.PathAllowed("/orders") {
 		t.Error("expected /orders to be allowed")
 	}
-	if cfg.PathAllowed("/health") {
-		t.Error("expected weight-0 /health to be excluded")
-	}
 	if got := cfg.WeightFor("/orders"); got != 5 {
 		t.Errorf("WeightFor(/orders) = %v, want 5", got)
 	}
 	if got := cfg.WeightFor("/unlisted"); got != 1 {
 		t.Errorf("WeightFor(/unlisted) = %v, want 1 (default)", got)
+	}
+}
+
+// A rule written as a bare `- match: /health` leaves Weight at zero. Treating
+// that as an exclusion would silently drop an endpoint its author plainly
+// meant to include — and YAML cannot distinguish an omitted number from an
+// explicit 0, so skip is the only way to exclude.
+func TestZeroWeightMeansDefaultNotExcluded(t *testing.T) {
+	cfg := Default()
+	cfg.Endpoints = []EndpointRule{{Match: "/health"}}
+
+	if !cfg.PathAllowed("/health") {
+		t.Error("a rule with no weight must not exclude the endpoint")
+	}
+	if got := cfg.WeightFor("/health"); got != 1 {
+		t.Errorf("WeightFor(/health) = %v, want the default 1", got)
 	}
 }
 

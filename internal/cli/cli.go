@@ -99,7 +99,7 @@ func newRunCmd() *cobra.Command {
   # Everything in a file
   spoofy run --config spoofy.yaml`),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTraffic(cmd, &f)
+			return runTraffic(cmd)
 		},
 	}
 
@@ -129,10 +129,17 @@ func newRunCmd() *cobra.Command {
 
 // resolve merges config file and flags. Flags win, because someone typing a
 // flag is being more specific than a file checked in months ago.
-func resolve(cmd *cobra.Command, f *runFlags) (*settings.Config, error) {
+//
+// Values are read from the flag set rather than from a parallel struct, so
+// there is exactly one place a flag name is spelled and no way for the two to
+// drift apart.
+func resolve(cmd *cobra.Command) (*settings.Config, error) {
+	fl := cmd.Flags()
+	str := func(name string) string { v, _ := fl.GetString(name); return v }
+
 	cfg := settings.Default()
 
-	path := f.configPath
+	path := str("config")
 	if path == "" {
 		path = settings.DiscoverConfig(".")
 	}
@@ -144,57 +151,64 @@ func resolve(cmd *cobra.Command, f *runFlags) (*settings.Config, error) {
 		cfg = *loaded
 	}
 
-	fl := cmd.Flags()
 	changed := func(name string) bool { return fl.Changed(name) }
 
 	if changed("url") {
-		cfg.Target = f.url
+		cfg.Target = str("url")
 	}
 	if changed("spec") {
-		cfg.Spec = f.spec
+		cfg.Spec = str("spec")
 	}
 	if changed("rate") {
-		r, err := settings.ParseRate(f.rate)
+		r, err := settings.ParseRate(str("rate"))
 		if err != nil {
 			return nil, err
 		}
 		cfg.Traffic.Rate = r
 	}
 	if changed("shape") {
-		cfg.Traffic.Shape = f.shape
+		cfg.Traffic.Shape = str("shape")
 	}
 	if changed("concurrency") {
-		cfg.Traffic.Concurrency = f.concurrency
+		v, _ := fl.GetInt("concurrency")
+		cfg.Traffic.Concurrency = v
 	}
 	if changed("timeout") {
-		cfg.Traffic.Timeout = settings.Duration(f.timeout)
+		v, _ := fl.GetDuration("timeout")
+		cfg.Traffic.Timeout = settings.Duration(v)
 	}
 	if changed("allow-writes") {
-		cfg.Safety.AllowWrites = f.allowWrites
+		v, _ := fl.GetBool("allow-writes")
+		cfg.Safety.AllowWrites = v
 	}
 	if changed("allow-prod") {
-		cfg.Safety.AllowProd = f.allowProd
+		v, _ := fl.GetBool("allow-prod")
+		cfg.Safety.AllowProd = v
 	}
 	if changed("metrics-addr") {
-		cfg.Metrics.Addr = f.metricsAddr
+		cfg.Metrics.Addr = str("metrics-addr")
 	}
 	if changed("no-metrics") {
-		cfg.Metrics.Disabled = f.noMetrics
+		v, _ := fl.GetBool("no-metrics")
+		cfg.Metrics.Disabled = v
 	}
 	if changed("seed") {
-		cfg.Seed = f.seed
+		v, _ := fl.GetInt64("seed")
+		cfg.Seed = v
 	}
 	if changed("auth-bearer") {
-		cfg.Auth.Bearer = f.bearer
+		cfg.Auth.Bearer = str("auth-bearer")
 	}
 	if changed("auth-basic") {
-		user, pass, ok := strings.Cut(f.basic, ":")
+		raw := str("auth-basic")
+		user, pass, ok := strings.Cut(raw, ":")
 		if !ok {
-			return nil, fmt.Errorf("--auth-basic must be user:pass, got %q", f.basic)
+			return nil, fmt.Errorf("--auth-basic must be user:pass, got %q", raw)
 		}
 		cfg.Auth.Basic = settings.BasicAuth{User: user, Pass: pass}
 	}
-	for _, h := range f.headers {
+	headers, _ := fl.GetStringArray("header")
+	for _, h := range headers {
 		name, value, ok := strings.Cut(h, ":")
 		if !ok {
 			return nil, fmt.Errorf("--header must be 'Name: value', got %q", h)
@@ -207,18 +221,20 @@ func resolve(cmd *cobra.Command, f *runFlags) (*settings.Config, error) {
 
 	// --only and --skip append endpoint rules, so they compose with a config
 	// file rather than silently replacing its rules.
-	for _, pattern := range f.skip {
+	skip, _ := fl.GetStringSlice("skip")
+	only, _ := fl.GetStringSlice("only")
+	for _, pattern := range skip {
 		cfg.Endpoints = append(cfg.Endpoints, settings.EndpointRule{Match: pattern, Skip: true})
 	}
-	if len(f.only) > 0 {
-		for _, pattern := range f.only {
+	if len(only) > 0 {
+		for _, pattern := range only {
 			cfg.Endpoints = append(cfg.Endpoints, settings.EndpointRule{Match: pattern})
 		}
 		// Anything not named is excluded.
 		cfg.Endpoints = append(cfg.Endpoints, settings.EndpointRule{Match: "*", Skip: true})
 	}
 
-	cfg.DryRun = f.dryRun
+	cfg.DryRun, _ = fl.GetBool("dry-run")
 
 	if cfg.Spec == "" {
 		if discovered := settings.DiscoverSpec("."); discovered != "" {
@@ -230,10 +246,10 @@ func resolve(cmd *cobra.Command, f *runFlags) (*settings.Config, error) {
 	return &cfg, nil
 }
 
-func runTraffic(cmd *cobra.Command, f *runFlags) error {
+func runTraffic(cmd *cobra.Command) error {
 	out := cmd.OutOrStdout()
 
-	cfg, err := resolve(cmd, f)
+	cfg, err := resolve(cmd)
 	if err != nil {
 		return err
 	}
@@ -274,9 +290,9 @@ func runTraffic(cmd *cobra.Command, f *runFlags) error {
 	defer stopSignals()
 
 	runCtx := sigCtx
-	if f.duration > 0 {
+	if duration, _ := cmd.Flags().GetDuration("duration"); duration > 0 {
 		var stopTimer context.CancelFunc
-		runCtx, stopTimer = context.WithTimeout(sigCtx, f.duration)
+		runCtx, stopTimer = context.WithTimeout(sigCtx, duration)
 		defer stopTimer()
 	}
 
