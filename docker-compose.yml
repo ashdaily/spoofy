@@ -1,0 +1,75 @@
+# A complete Spoofy demo: a target API, Spoofy generating traffic against it,
+# Prometheus scraping both, and Grafana with a dashboard already loaded.
+#
+#   docker compose up
+#   open http://localhost:3000
+#
+# Nothing needs configuring first. The point is to see, in about a minute, what
+# a populated non-production environment actually looks like.
+
+services:
+  # The API under test. Varied latency, one deliberately slow endpoint, and a
+  # small synthetic error rate — a target that always returns 200 in 1ms makes
+  # a dashboard with nothing on it worth looking at.
+  petstore:
+    build:
+      context: .
+      dockerfile: examples/petstore/Dockerfile
+    environment:
+      PETSTORE_ADDR: ":8080"
+      PETSTORE_ERROR_RATE: "0.02"
+    ports:
+      - "8080:8080"
+
+  spoofy:
+    build:
+      context: .
+      args:
+        VERSION: docker
+    command:
+      - run
+      - --spec=http://petstore:8080/openapi.yaml
+      - --url=http://petstore:8080/v1
+      - --rate=25/s
+      - --shape=diurnal
+      - --concurrency=8
+      - --metrics-addr=:9090
+    ports:
+      - "9091:9090"
+    depends_on:
+      - petstore
+    # No healthcheck gate needed: Spoofy retries an unreachable spec on startup,
+    # because under compose and Kubernetes alike everything starts at once.
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+      # Faster than the default so a demo does not spend ten minutes looking
+      # empty while data accumulates.
+      - --storage.tsdb.min-block-duration=2m
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - spoofy
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: spoofy
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      # Land straight on the dashboard. Making someone navigate a menu before
+      # they see the thing defeats the purpose of a one-command demo.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/spoofy.json
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus

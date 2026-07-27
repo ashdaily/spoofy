@@ -120,6 +120,7 @@ func newRunCmd() *cobra.Command {
 	fl.StringSliceVar(&f.only, "only", nil, "only exercise paths matching these globs")
 	fl.StringSliceVar(&f.skip, "skip", nil, "never exercise paths matching these globs")
 	fl.Int64Var(&f.seed, "seed", 0, "seed for reproducible runs")
+	fl.Duration("startup-timeout", DefaultStartupTimeout, "how long to wait for a remote spec to become reachable")
 	fl.StringVar(&f.bearer, "auth-bearer", "", "bearer token")
 	fl.StringVar(&f.basic, "auth-basic", "", "basic credentials as user:pass")
 	fl.StringArrayVar(&f.headers, "header", nil, "extra header as 'Name: value' (repeatable)")
@@ -260,7 +261,7 @@ func runTraffic(cmd *cobra.Command) error {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
-	spec, err := openapi.Load(ctx, cfg.Spec)
+	spec, err := loadSpec(ctx, out, cfg.Spec, startupTimeout(cmd))
 	if err != nil {
 		return err
 	}

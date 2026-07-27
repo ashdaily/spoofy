@@ -1,0 +1,9 @@
+.git
+.github
+bin
+coverage.out
+*.md
+!examples/**/*.md
+.idea
+.DS_Store
+deploy/grafana
