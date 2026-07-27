@@ -220,6 +220,63 @@ func TestBackoffIsInterruptedByCancellation(t *testing.T) {
 	}
 }
 
+// A run bounded by --duration ends with in-flight requests failing as
+// DeadlineExceeded — indistinguishable from a real per-request timeout except
+// by the state of the context. Miscounting these marks a healthy target down
+// at the end of every bounded run, which then lands in target_up and in any
+// alert wired to it.
+func TestDeadlineFromRunDurationIsNotATargetFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(30*time.Second, 1) // generous per-request timeout: only the run deadline can fire
+	c.sleep = func(context.Context, time.Duration) {}
+
+	for i := 0; i < failureThreshold+2; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		got := c.Do(ctx, get(t, srv.URL).WithContext(ctx), ref())
+		cancel()
+
+		if got.Err == nil {
+			t.Fatal("expected the run deadline to cut the request short")
+		}
+	}
+
+	if !c.Up() {
+		t.Error("target marked down by run-deadline expiry; it was answering fine")
+	}
+	if c.ConsecutiveFailures() != 0 {
+		t.Errorf("ConsecutiveFailures = %d, want 0", c.ConsecutiveFailures())
+	}
+}
+
+// The inverse: a genuine per-request timeout, with the run context healthy, IS
+// a target failure and must be counted.
+func TestPerRequestTimeoutIsATargetFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := New(20*time.Millisecond, 1) // client timeout fires, run context stays healthy
+	c.sleep = func(context.Context, time.Duration) {}
+
+	for i := 0; i < failureThreshold; i++ {
+		got := c.Do(context.Background(), get(t, srv.URL), ref())
+		if got.Err == nil {
+			t.Fatal("expected a per-request timeout")
+		}
+	}
+
+	if c.Up() {
+		t.Error("a target that never answers within the timeout should be marked down")
+	}
+}
+
 func TestCancelledContextIsNotCountedAsTargetFailure(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)

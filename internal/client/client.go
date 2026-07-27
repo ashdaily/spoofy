@@ -9,7 +9,6 @@ package client
 
 import (
 	"context"
-	"errors"
 	"io"
 	"math"
 	"net/http"
@@ -142,13 +141,20 @@ func (c *Client) Do(ctx context.Context, req *http.Request, op OperationRef) Res
 	}
 
 	if err != nil {
-		// A cancelled context is shutdown, not a target failure; counting it
-		// would mark a healthy target down every time someone stops the daemon.
-		if errors.Is(err, context.Canceled) {
-			result.Err = err
+		result.Err = err
+
+		// Shutdown is not a target failure. The discriminator is the state of
+		// the context we were handed, not the error we got back: a request cut
+		// short by --duration surfaces as DeadlineExceeded, exactly like a
+		// genuine per-request timeout, and only ctx.Err() tells the two apart.
+		//
+		// Getting this wrong marks a perfectly healthy target down every time
+		// the daemon stops, which then shows up in target_up and in whatever
+		// alert someone wired to it.
+		if ctx.Err() != nil {
 			return result
 		}
-		result.Err = err
+
 		c.recordFailure()
 		return result
 	}
