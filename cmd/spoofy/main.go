@@ -5,8 +5,7 @@ import (
 	"os"
 )
 
-
-func main(){
+func main() {
 	fmt.Println("Hi, I am Spoofy!, ready to  send traffic always.")
 
 	os.Exit(0)
