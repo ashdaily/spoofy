@@ -1,0 +1,15 @@
+# Scrape config for the Spoofy demo stack.
+#
+# A 5s interval rather than the usual 15s: a demo should show a curve within a
+# minute, not after a coffee break.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: spoofy
+    static_configs:
+      - targets: ["spoofy:9090"]
+        labels:
+          service: spoofy

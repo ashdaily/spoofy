@@ -1,3 +1,11 @@
 .idea
 .DS_Store
 
+# Build output
+bin/
+coverage.out
+coverage.html
+
+# A local config is environment-specific. The documented example lives in the
+# readme, and `spoofy init` generates one on demand.
+/spoofy.yaml
