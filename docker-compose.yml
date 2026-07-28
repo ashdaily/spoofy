@@ -4,13 +4,11 @@
 #   docker compose up
 #   open http://localhost:3000
 #
-# Nothing needs configuring first. The point is to see, in about a minute, what
-# a populated non-production environment actually looks like.
+# Nothing needs configuring first.
 
 services:
-  # The API under test. Varied latency, one deliberately slow endpoint, and a
-  # small synthetic error rate — a target that always returns 200 in 1ms makes
-  # a dashboard with nothing on it worth looking at.
+  # The API under test. Varied latency, one slow endpoint, and a small
+  # synthetic error rate, so the dashboard has something on it.
   petstore:
     build:
       context: .
@@ -47,8 +45,7 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=6h
-      # Faster than the default so a demo does not spend ten minutes looking
-      # empty while data accumulates.
+      # Faster than the default so a demo is not empty for ten minutes.
       - --storage.tsdb.min-block-duration=2m
     volumes:
       - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -63,8 +60,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: spoofy
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
-      # Land straight on the dashboard. Making someone navigate a menu before
-      # they see the thing defeats the purpose of a one-command demo.
+      # Land straight on the dashboard rather than a menu.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/spoofy.json
     volumes:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro

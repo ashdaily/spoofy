@@ -295,10 +295,9 @@ func TestSameSeedProducesIdenticalRequests(t *testing.T) {
 	}
 }
 
-// The integration test that matters: route every generated request through a
-// mux that implements the spec's paths. A 404 here means the generator built a
-// URL the API does not serve — which in production would be a daemon happily
-// reporting traffic while exercising nothing.
+// Route every generated request through a mux implementing the spec's paths. A
+// 404 here means the generator built a URL the API does not serve, which in
+// production is a daemon reporting traffic while exercising nothing.
 func TestGeneratedRequestsHitRealRoutes(t *testing.T) {
 	var (
 		mu   sync.Mutex

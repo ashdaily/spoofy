@@ -1,10 +1,9 @@
 // Package report renders what Spoofy is doing, for humans.
 //
-// It has two modes because it has two audiences. At a terminal it redraws a
-// compact panel in place, which is what makes the tool feel alive and gets it
-// screenshotted. Piped to a file or running under Kubernetes it emits one line
-// per interval, because ANSI redraw sequences in a pod log are unreadable
-// noise that people then have to grep around.
+// Two modes, because there are two audiences. At a terminal it redraws a
+// compact panel in place. Piped to a file or running under Kubernetes it emits
+// one line per interval, since ANSI redraw sequences in a pod log are noise
+// people then have to grep around.
 package report
 
 import (
@@ -67,7 +66,7 @@ func isTerminal(out io.Writer) bool {
 
 // Run redraws until done is closed.
 func (l *Live) Run(done <-chan struct{}, snapshot func() (engine.Snapshot, float64, bool)) {
-	// In log mode a half-second cadence would produce 170,000 lines a day.
+	// A half-second cadence would produce 170,000 log lines a day.
 	interval := l.interval
 	if !l.tty {
 		interval = 10 * time.Second
@@ -95,8 +94,8 @@ func (l *Live) render(s engine.Snapshot, targetRate float64, up bool) {
 		return
 	}
 
-	// Move the cursor back over the previous frame rather than clearing the
-	// screen, so scrollback above the panel survives.
+	// Move back over the previous frame instead of clearing the screen, so
+	// scrollback above the panel survives.
 	if l.linesDrawn > 0 {
 		fmt.Fprintf(l.out, "\033[%dA", l.linesDrawn)
 	}
@@ -202,7 +201,7 @@ func formatCount(n int64) string {
 	if n < 1000 {
 		return fmt.Sprintf("%d", n)
 	}
-	// Thousands separators: 1,204,857 is scannable at a glance, 1204857 is not.
+	// 1,204,857 is scannable at a glance; 1204857 is not.
 	s := fmt.Sprintf("%d", n)
 	var out []byte
 	for i, c := range []byte(s) {
@@ -217,7 +216,7 @@ func formatCount(n int64) string {
 func formatLatency(d time.Duration) string {
 	switch {
 	case d == 0:
-		return "–"
+		return "-"
 	case d < time.Millisecond:
 		return fmt.Sprintf("%dµs", d.Microseconds())
 	case d < time.Second:

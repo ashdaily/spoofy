@@ -25,11 +25,10 @@ func startupTimeout(cmd *cobra.Command) time.Duration {
 
 // loadSpec loads the spec, retrying while a remote one is still coming up.
 //
-// Everything starts at once under Docker Compose and Kubernetes, so the API is
-// routinely unreachable for the first few seconds of the daemon's life. Exiting
-// on that turns an ordinary startup ordering into a crash loop, and then into
-// somebody's morning. A local file gets no retry: a missing path is a mistake
-// that waiting will not fix.
+// Under Docker Compose and Kubernetes everything starts at once, so the API is
+// routinely unreachable for the first few seconds. Exiting on that turns
+// ordinary startup ordering into a crash loop. A local file gets no retry,
+// since a missing path is a mistake waiting will not fix.
 func loadSpec(ctx context.Context, out io.Writer, source string, timeout time.Duration) (*openapi.Spec, error) {
 	spec, err := openapi.Load(ctx, source)
 	if err == nil || !isRemote(source) {

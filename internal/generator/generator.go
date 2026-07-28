@@ -1,9 +1,7 @@
 // Package generator turns a spec operation into a concrete HTTP request.
 //
-// This is where the abstract (an operation with parameters) becomes the
-// specific (a URL with a path, a query string, headers, and a body). The rules
-// it follows are OpenAPI's, but the priorities are Spoofy's: a request that the
-// target API will actually accept beats one that merely type-checks.
+// The rules it follows are OpenAPI's, but the priority is Spoofy's: a request
+// the target will accept beats one that merely type-checks.
 package generator
 
 import (
@@ -26,18 +24,16 @@ import (
 )
 
 // preferredContentTypes are tried in order when an operation offers several.
-// JSON first because it is what the overwhelming majority of APIs speak and
-// what Spoofy can generate most faithfully.
+// JSON first, since it is what most APIs speak and what Spoofy generates most
+// faithfully.
 var preferredContentTypes = []string{
 	"application/json",
 	"application/x-www-form-urlencoded",
 	"text/plain",
 }
 
-// Generator builds requests for a single target.
-//
-// Like randomizer.Randomizer it is NOT safe for concurrent use; give each
-// worker its own instance.
+// Generator builds requests for a single target. Like randomizer.Randomizer it
+// is not safe for concurrent use; give each worker its own.
 type Generator struct {
 	base *url.URL
 	rnd  *randomizer.Randomizer
@@ -71,7 +67,7 @@ func (g *Generator) Build(ctx context.Context, op *openapi.Operation) (*http.Req
 		return nil, fmt.Errorf("%s: building request body: %w", op, err)
 	}
 
-	// A nil reader, not an empty one: an empty bytes.Reader still sets
+	// A nil reader, not an empty one. An empty bytes.Reader still sets
 	// Content-Length: 0 on a GET, which some strict servers reject.
 	var reader io.Reader
 	if body != nil {
@@ -95,7 +91,7 @@ func (g *Generator) Build(ctx context.Context, op *openapi.Operation) (*http.Req
 		req.AddCookie(c)
 	}
 
-	// Auth last so it wins over any spec-declared header of the same name.
+	// Auth last, so it wins over any spec-declared header of the same name.
 	g.auth.Apply(req)
 
 	return req, nil
@@ -111,10 +107,9 @@ func (g *Generator) params(op *openapi.Operation) (path string, query url.Values
 		if p == nil {
 			continue
 		}
-		// An optional parameter is worth omitting sometimes: an API whose
-		// filters are never exercised is an API whose filters are untested.
-		// Path parameters are exempt — omitting one leaves a literal "{id}" in
-		// the URL, which 404s every time.
+		// Omit optional parameters sometimes, or the API's filters are never
+		// exercised. Path parameters are exempt: omitting one leaves a literal
+		// "{id}" in the URL, which 404s every time.
 		if !p.Required && p.In != "path" && !g.rnd.Bool() {
 			continue
 		}
@@ -127,8 +122,8 @@ func (g *Generator) params(op *openapi.Operation) (path string, query url.Values
 		switch p.In {
 		case "path":
 			if value == "" {
-				// A path parameter with no usable schema would otherwise leave
-				// the template intact and guarantee a 404.
+				// A path parameter with no usable schema would leave the
+				// template intact and guarantee a 404.
 				value = g.rnd.String(&openapi3.Schema{Type: &openapi3.Types{"string"}})
 			}
 			path = strings.ReplaceAll(path, "{"+p.Name+"}", url.PathEscape(value))
@@ -144,8 +139,8 @@ func (g *Generator) params(op *openapi.Operation) (path string, query url.Values
 	return path, query, headers, cookies
 }
 
-// paramValue resolves a single parameter, preferring what the spec author
-// wrote over anything generated.
+// paramValue resolves a single parameter, preferring what the spec says over
+// anything generated.
 func (g *Generator) paramValue(p *openapi3.Parameter) string {
 	if p.Example != nil {
 		return toString(p.Example)
@@ -174,7 +169,7 @@ func (g *Generator) body(op *openapi.Operation) ([]byte, string, error) {
 		return nil, "", nil
 	}
 
-	// A spec-provided body example is a real request someone wrote down. Use it.
+	// A spec-provided body example is a real request someone wrote down.
 	var value any
 	switch {
 	case media.Example != nil:
@@ -214,25 +209,23 @@ func (g *Generator) body(op *openapi.Operation) ([]byte, string, error) {
 	}
 }
 
-// pickContent chooses a media type, preferring ones Spoofy generates well and
-// falling back to whatever the operation offers.
+// pickContent chooses a media type, preferring ones Spoofy generates well.
 func pickContent(content openapi3.Content) (string, *openapi3.MediaType) {
 	for _, want := range preferredContentTypes {
 		if media := content.Get(want); media != nil {
 			return want, media
 		}
 	}
-	// Deterministic fallback: sorted, so the same spec always picks the same
-	// media type rather than whatever map iteration surfaced first.
+	// Sorted, so the same spec always picks the same media type instead of
+	// whatever map iteration surfaced first.
 	for _, name := range sortedContentKeys(content) {
 		return name, content[name]
 	}
 	return "", nil
 }
 
-// Curl renders the request as a copy-pasteable curl command. Dry-run output
-// that you can paste into a terminal is worth considerably more than a
-// description of what would have been sent.
+// Curl renders the request as a copy-pasteable curl command, which is worth
+// more in dry-run output than a description of what would have been sent.
 func Curl(req *http.Request, body []byte) string {
 	var b strings.Builder
 	b.WriteString("curl -i -X " + req.Method)
@@ -258,9 +251,8 @@ func Curl(req *http.Request, body []byte) string {
 }
 
 // joinPath splices a base path onto an operation path without doubling or
-// dropping the separator. A target of http://host/v1 and a path of /pets must
-// produce /v1/pets, which neither naive concatenation nor path.Join gets right
-// in every case.
+// dropping the separator. http://host/v1 plus /pets must give /v1/pets, which
+// neither concatenation nor path.Join gets right in every case.
 func joinPath(basePath, opPath string) string {
 	basePath = strings.TrimSuffix(basePath, "/")
 	if opPath == "" {
@@ -289,7 +281,7 @@ func toString(v any) string {
 	case int64:
 		return strconv.FormatInt(t, 10)
 	case float64:
-		// Render whole floats as integers: "limit=10", not "limit=10.000000".
+		// Whole floats render as integers: "limit=10", not "limit=10.000000".
 		if t == float64(int64(t)) {
 			return strconv.FormatInt(int64(t), 10)
 		}

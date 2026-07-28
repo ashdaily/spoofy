@@ -1,6 +1,6 @@
 // Package cli defines Spoofy's command-line surface.
 //
-// The guiding constraint is that the first run must work without a config
+// The constraint shaping it is that a first run must work without a config
 // file. `spoofy run --url http://localhost:8080` with a discoverable spec is a
 // complete invocation; everything else is progressive disclosure.
 package cli
@@ -30,9 +30,9 @@ import (
 func ExecuteContext(ctx context.Context) int {
 	root := newRootCmd()
 	if err := root.ExecuteContext(ctx); err != nil {
-		// Errors are formatted for a human reading a terminal, not as a Go
-		// error chain: most of them are configuration mistakes, and the fix
-		// should be visible without reading source.
+		// Formatted for a human at a terminal rather than as a Go error chain.
+		// Most are configuration mistakes, and the fix should be visible
+		// without reading source.
 		fmt.Fprintf(os.Stderr, "\nerror: %v\n\n", err)
 		return 1
 	}
@@ -128,12 +128,11 @@ func newRunCmd() *cobra.Command {
 	return cmd
 }
 
-// resolve merges config file and flags. Flags win, because someone typing a
-// flag is being more specific than a file checked in months ago.
+// resolve merges config file and flags. Flags win, since someone typing one is
+// being more specific than a file committed months ago.
 //
-// Values are read from the flag set rather than from a parallel struct, so
-// there is exactly one place a flag name is spelled and no way for the two to
-// drift apart.
+// Values come from the flag set rather than a parallel struct, so a flag name
+// is spelled in exactly one place.
 func resolve(cmd *cobra.Command) (*settings.Config, error) {
 	fl := cmd.Flags()
 	str := func(name string) string { v, _ := fl.GetString(name); return v }
@@ -220,8 +219,8 @@ func resolve(cmd *cobra.Command) (*settings.Config, error) {
 		cfg.Auth.Headers[strings.TrimSpace(name)] = strings.TrimSpace(value)
 	}
 
-	// --only and --skip append endpoint rules, so they compose with a config
-	// file rather than silently replacing its rules.
+	// --only and --skip append rules, so they compose with a config file instead
+	// of replacing what it declares.
 	skip, _ := fl.GetStringSlice("skip")
 	only, _ := fl.GetStringSlice("only")
 	for _, pattern := range skip {
@@ -286,7 +285,7 @@ func runTraffic(cmd *cobra.Command) error {
 		return printDryRun(ctx, out, eng)
 	}
 
-	// SIGTERM is what Kubernetes sends; SIGINT is ctrl-c. Both mean drain.
+	// SIGTERM from Kubernetes, SIGINT from ctrl-c. Both mean drain.
 	sigCtx, stopSignals := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
 
@@ -314,7 +313,7 @@ func runTraffic(cmd *cobra.Command) error {
 	eng.Run(runCtx)
 	close(liveDone)
 
-	// Give the final frame a moment to land before the summary.
+	// Let the final frame land before the summary.
 	time.Sleep(50 * time.Millisecond)
 	printSummary(out, eng)
 
@@ -335,9 +334,8 @@ func printBanner(out io.Writer, cfg *settings.Config, spec *openapi.Spec, eng *e
 	fmt.Fprintf(out, "  traffic   %s\n", eng.Scheduler().Shape().Describe())
 	fmt.Fprintf(out, "  workers   %d concurrent\n", cfg.Traffic.Concurrency)
 
-	// Say plainly how much of the spec is actually being exercised. Silently
-	// dropping most of it while reporting healthy traffic is the failure mode
-	// most likely to waste somebody's afternoon.
+	// State how much of the spec is being exercised, so a run that drops most of
+	// it cannot pass for a healthy one.
 	fmt.Fprintf(out, "  endpoints %d of %d", len(eng.Operations()), len(spec.Operations))
 	var reasons []string
 	if skippedByMethod > 0 {
@@ -347,7 +345,7 @@ func printBanner(out io.Writer, cfg *settings.Config, spec *openapi.Spec, eng *e
 		reasons = append(reasons, fmt.Sprintf("%d filtered", skippedByPath))
 	}
 	if len(reasons) > 0 {
-		fmt.Fprintf(out, "  — skipped %s", strings.Join(reasons, ", "))
+		fmt.Fprintf(out, ", skipped %s", strings.Join(reasons, ", "))
 	}
 	fmt.Fprintln(out)
 
@@ -357,7 +355,7 @@ func printBanner(out io.Writer, cfg *settings.Config, spec *openapi.Spec, eng *e
 	if !cfg.Safety.AllowWrites {
 		fmt.Fprintf(out, "  safety    read-only (GET, HEAD, OPTIONS)\n")
 	} else {
-		fmt.Fprintf(out, "  safety    WRITES ENABLED — this run can create and delete data\n")
+		fmt.Fprintf(out, "  safety    WRITES ENABLED: this run can create and delete data\n")
 	}
 	fmt.Fprintln(out)
 }
@@ -367,7 +365,7 @@ func printDryRun(ctx context.Context, out io.Writer, eng *engine.Engine) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "  Dry run — %d request(s), nothing sent:\n\n", len(commands))
+	fmt.Fprintf(out, "  Dry run: %d request(s), nothing sent.\n\n", len(commands))
 	for i, c := range commands {
 		fmt.Fprintf(out, "  %s\n\n", eng.Operations()[i])
 		fmt.Fprintf(out, "%s\n\n", c)
@@ -377,7 +375,7 @@ func printDryRun(ctx context.Context, out io.Writer, eng *engine.Engine) error {
 
 func printSummary(out io.Writer, eng *engine.Engine) {
 	s := eng.Stats().Snapshot(time.Now())
-	fmt.Fprintf(out, "\n  stopped after %s — %d requests, %.1f%% ok\n\n",
+	fmt.Fprintf(out, "\n  stopped after %s: %d requests, %.1f%% ok\n\n",
 		s.Elapsed.Round(time.Second), s.Total, s.SuccessRate()*100)
 }
 

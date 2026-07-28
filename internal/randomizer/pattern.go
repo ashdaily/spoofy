@@ -8,19 +8,16 @@ import (
 
 // GeneratePattern produces a string matching a regular expression.
 //
-// Specs use `pattern` for exactly the fields where a wrong value is rejected:
-// account numbers, SKUs, postcodes, microchip IDs. Generating a random string
-// for those guarantees a 400, which is traffic that proves nothing. So this is
-// a small generation-only regex engine — far simpler than a matcher, since it
-// only has to produce one member of the language rather than decide membership.
+// Specs use `pattern` on the fields where a wrong value is rejected outright:
+// account numbers, SKUs, postcodes. A random string there guarantees a 400. So
+// this is a generation-only regex engine, much simpler than a matcher because
+// it only has to produce one member of the language, not decide membership.
 //
-// It handles the constructs specs actually use: literals, character classes,
-// escapes, alternation, non-capturing groups, and quantifiers. Anything beyond
-// that (lookaround, backreferences) returns ok=false, and the caller falls back
-// to ordinary string generation rather than emitting something certainly wrong.
+// It covers what specs actually use: literals, character classes, escapes,
+// alternation, non-capturing groups, quantifiers. Lookaround and backreferences
+// return ok=false so the caller can fall back to ordinary string generation.
 //
-// maxRepeat bounds unbounded quantifiers so that `.*` cannot produce a
-// megabyte, and `{1,10000}` cannot either.
+// maxRepeat bounds unbounded quantifiers so `.*` cannot produce a megabyte.
 const maxRepeat = 8
 
 func GeneratePattern(rng *rand.Rand, pattern string) (string, bool) {
@@ -64,8 +61,8 @@ func (p *patParser) fail() string {
 	return ""
 }
 
-// alternation parses `a|b|c` and returns one branch. Every branch is parsed so
-// the input is fully consumed, but only the chosen one contributes output.
+// alternation parses `a|b|c` and returns one branch. All branches are parsed so
+// the input is consumed; only the chosen one contributes output.
 func (p *patParser) alternation() string {
 	branches := []string{p.sequence()}
 	for p.ok && p.peek() == '|' {
@@ -86,9 +83,9 @@ func (p *patParser) sequence() string {
 	return sb.String()
 }
 
-// quantified parses one atom plus any trailing quantifier, and emits the atom
-// the requested number of times. The atom is a generator rather than a string
-// so that `[a-z]{4}` yields four different letters instead of one repeated.
+// quantified parses one atom plus any trailing quantifier. The atom is a
+// generator rather than a string so `[a-z]{4}` yields four different letters
+// instead of the same one four times.
 func (p *patParser) quantified() string {
 	gen := p.atom()
 	if !p.ok {
@@ -134,7 +131,7 @@ func (p *patParser) quantifier() (lo, hi int, has bool) {
 	return 0, 0, false
 }
 
-// maybeLazy swallows a lazy marker. Greediness does not affect generation.
+// maybeLazy swallows a lazy marker; greediness does not affect generation.
 func (p *patParser) maybeLazy() {
 	if p.peek() == '?' {
 		p.next()
@@ -150,8 +147,7 @@ func (p *patParser) braceQuantifier() (int, int, bool) {
 		body.WriteRune(p.next())
 	}
 	if p.peek() != '}' {
-		// Not a quantifier after all — a literal brace. Rewind and let atom
-		// handle it on the next pass.
+		// A literal brace, not a quantifier. Rewind and let atom handle it.
 		p.pos = start
 		return 0, 0, false
 	}
@@ -181,8 +177,8 @@ func (p *patParser) braceQuantifier() (int, int, bool) {
 	}
 }
 
-// clampRepeat keeps generated strings sane. A spec saying {1,4096} is asking
-// for a field bound, not for us to actually send 4096 characters.
+// clampRepeat keeps generated strings sane. A spec saying {1,4096} is stating a
+// field bound, not asking for 4096 characters.
 func clampRepeat(n int) int {
 	const hardCap = 64
 	if n > hardCap {
@@ -218,8 +214,8 @@ func (p *patParser) atom() func() string {
 func (p *patParser) group() func() string {
 	p.next() // consume '('
 
-	// Non-capturing groups are fine; other (?...) constructs are lookaround or
-	// flags, which have no sensible generative reading.
+	// Non-capturing groups are fine. Other (?...) constructs are lookaround or
+	// flags, which have no generative meaning.
 	if p.peek() == '?' {
 		if p.pos+1 < len(p.src) && p.src[p.pos+1] == ':' {
 			p.next()
@@ -325,8 +321,8 @@ func (p *patParser) escape() func() string {
 	return func() string { return s }
 }
 
-// escapeSet handles a backslash inside a character class, where the result
-// contributes to the enclosing set rather than generating directly.
+// escapeSet handles a backslash inside a character class, contributing to the
+// enclosing set instead of generating directly.
 func (p *patParser) escapeSet() []rune {
 	c := p.next()
 	if set, ok := escapeSets[c]; ok {
@@ -368,8 +364,8 @@ var escapeSets = map[rune][]rune{
 	't': {'\t'},
 }
 
-// complement approximates a negated class over a printable ASCII alphabet.
-// Generating from the full Unicode complement would be correct and useless.
+// complement approximates a negated class over printable ASCII. The full
+// Unicode complement would be correct and useless.
 func complement(excluded []rune) []rune {
 	blocked := make(map[rune]bool, len(excluded))
 	for _, r := range excluded {

@@ -10,18 +10,15 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// DefaultAdjustInterval is how often the pacing is re-derived from the shape.
-// One second is far finer than any shape needs — a 24-hour diurnal cycle moves
-// imperceptibly per second — while still reacting promptly to a spike boundary.
+// DefaultAdjustInterval is how often pacing is re-derived from the shape. Finer
+// than any shape needs, while still reacting promptly at a spike boundary.
 const DefaultAdjustInterval = time.Second
 
 // Scheduler paces work according to a Shape.
 //
-// It owns two things: how fast (the shape, re-evaluated on a ticker) and how
-// many at once (a fixed worker pool). Keeping those separate matters because
-// concurrency is a property of the target's tolerance while rate is a property
-// of the traffic you want to see; conflating them makes both hard to reason
-// about.
+// It owns how fast (the shape, re-evaluated on a ticker) and how many at once
+// (a fixed worker pool). They stay separate because concurrency describes the
+// target's tolerance while rate describes the traffic you want to see.
 type Scheduler struct {
 	shape       Shape
 	concurrency int
@@ -31,7 +28,7 @@ type Scheduler struct {
 	now            func() time.Time
 	adjustInterval time.Duration
 
-	// currentRate is published for the live view. Stored as bits because
+	// currentRate is published for the live view, stored as bits because
 	// sync/atomic has no float64.
 	currentRate atomic.Uint64
 	completed   atomic.Int64
@@ -72,18 +69,18 @@ func (s *Scheduler) Shape() Shape { return s.shape }
 
 // Run drives work at the shaped rate until ctx is cancelled.
 //
-// It returns only after every in-flight worker has finished, so a caller that
-// cancels on SIGTERM gets a clean drain rather than severed connections.
+// It returns only once every in-flight worker has finished, so cancelling on
+// SIGTERM drains cleanly instead of severing connections.
 func (s *Scheduler) Run(ctx context.Context, work func(context.Context)) {
 	start := s.now()
 
 	initial := s.shape.RateAt(start, start)
 	s.setRate(initial)
 
-	// Burst 1 gives strict pacing: with several workers waiting, the limiter
-	// hands out permits one at a time rather than releasing a clump at each
-	// interval boundary. Clumping would show up in Grafana as a sawtooth that
-	// the target never actually experienced.
+	// Burst 1 gives strict pacing. With several workers waiting, the limiter
+	// hands out permits one at a time instead of releasing a clump at each
+	// interval boundary, which would show up in Grafana as a sawtooth the
+	// target never experienced.
 	limiter := rate.NewLimiter(rate.Limit(initial), 1)
 
 	var wg sync.WaitGroup
@@ -102,10 +99,9 @@ func (s *Scheduler) Run(ctx context.Context, work func(context.Context)) {
 				if err := limiter.Wait(ctx); err != nil {
 					return // context cancelled
 				}
-				// Re-check after waiting: Wait can return successfully at the
-				// same moment cancellation arrives, and issuing one more
-				// request during shutdown is exactly the kind of detail that
-				// makes a drain look unclean.
+				// Wait can return successfully at the same moment cancellation
+				// arrives, and one extra request during shutdown makes a drain
+				// look unclean.
 				if ctx.Err() != nil {
 					return
 				}

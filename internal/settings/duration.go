@@ -8,9 +8,8 @@ import (
 )
 
 // Duration wraps time.Duration so config can write "24h" or "90s" directly.
-// yaml.v3 has no native time.Duration support, and the alternative — an
-// integer field named something like timeout_seconds — pushes unit bookkeeping
-// onto the reader of every config file.
+// yaml.v3 has no native support, and an integer field named timeout_seconds
+// pushes unit bookkeeping onto every reader of the file.
 type Duration time.Duration
 
 // D returns the underlying time.Duration.
@@ -20,9 +19,8 @@ func (d Duration) String() string { return time.Duration(d).String() }
 
 // UnmarshalYAML accepts "30s", "24h", "1h30m", or a bare number of seconds.
 //
-// The branch is chosen from the YAML node tag rather than from a failed decode:
-// yaml.v3 will happily decode the scalar 45 into a Go string, so "try string,
-// fall back to number" makes the number branch unreachable.
+// The branch comes from the YAML node tag rather than a failed decode, since
+// yaml.v3 decodes the scalar 45 into a Go string quite happily.
 func (d *Duration) UnmarshalYAML(node *yaml.Node) error {
 	if node.Tag == "!!int" || node.Tag == "!!float" {
 		var secs float64

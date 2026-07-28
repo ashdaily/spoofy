@@ -354,8 +354,8 @@ func TestNewRejectsAnEmptyOperationSet(t *testing.T) {
 	}
 }
 
-// A target that is down must not stop the engine — it should back off and keep
-// trying, because the target coming back is the normal end of a deploy.
+// A target that is down must not stop the engine. It should back off and keep
+// trying, since the target coming back is the normal end of a deploy.
 func TestSurvivesAnUnreachableTarget(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	url := srv.URL

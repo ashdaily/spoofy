@@ -116,8 +116,8 @@ func TestLatencyMemoryIsBounded(t *testing.T) {
 	}
 }
 
-// The achieved rate should reflect recent traffic, not the lifetime average —
-// otherwise a shape change takes hours to become visible.
+// The achieved rate should reflect recent traffic rather than the lifetime
+// average, or a shape change takes hours to become visible.
 func TestAchievedRateUsesARecentWindow(t *testing.T) {
 	start := time.Date(2024, 6, 12, 10, 0, 0, 0, time.UTC)
 	s := NewStats(start)
@@ -136,7 +136,7 @@ func TestAchievedRateUsesARecentWindow(t *testing.T) {
 		}
 	}
 
-	// Observing at t=15s, the window covers seconds 10..14 — the light period.
+	// Observing at t=15s, the window covers seconds 10..14, the light period.
 	snap := s.Snapshot(start.Add(15 * time.Second))
 	if snap.AchievedRPS < 8 || snap.AchievedRPS > 12 {
 		t.Errorf("AchievedRPS = %v, want about 10 (the recent window, not the lifetime average)",

@@ -38,9 +38,8 @@ jobs:
           go mod tidy
           git diff --exit-code go.mod go.sum
 
-      # The race detector is not optional here: Spoofy is a concurrent daemon,
-      # and a data race that only shows up after a week in staging is the worst
-      # possible way to find one.
+      # Spoofy is a concurrent daemon, and a data race that only surfaces
+      # after a week in staging is an expensive way to find one.
       - name: Test
         run: go test -race -coverprofile=coverage.out ./...
 
@@ -81,7 +80,7 @@ jobs:
       - name: Build image
         run: docker build -t spoofy:ci .
 
-      # A smoke test worth having: the image must actually start and be able to
-      # describe itself. A broken entrypoint otherwise surfaces at deploy time.
+      # The image has to start and describe itself, or a broken entrypoint
+      # surfaces at deploy time instead.
       - name: Smoke test the image
         run: docker run --rm spoofy:ci version

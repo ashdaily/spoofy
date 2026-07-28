@@ -1,11 +1,10 @@
 // Command petstore is a throwaway API for demonstrating Spoofy.
 //
-// It exists so that `docker compose up` needs nothing from the internet. It
-// serves its own OpenAPI document at /openapi.yaml, implements every route in
-// it, and — importantly for a demo — behaves like a real service rather than a
-// perfect one: latency varies, a small share of requests fail, and one endpoint
-// is deliberately slow. A target that returns 200 in 1ms forever produces a
-// dashboard with nothing on it worth looking at.
+// It exists so `docker compose up` needs nothing from the internet. It serves
+// its own OpenAPI document at /openapi.yaml, implements every route in it, and
+// behaves like a real service rather than a perfect one: latency varies, a
+// small share of requests fail, and one endpoint is slow. A target that returns
+// 200 in 1ms forever gives you a dashboard with nothing on it.
 package main
 
 import (
@@ -71,8 +70,8 @@ func routes(errorRate float64) http.Handler {
 		w.Write(body)
 	})
 
-	// Latency profiles differ per route on purpose: a flat latency histogram
-	// teaches nobody anything about their dashboards.
+	// Latency differs per route, since a flat histogram teaches nobody anything
+	// about their dashboards.
 	handle := func(pattern string, status int, base, jitter time.Duration) {
 		mux.Handle(pattern, endpoint(status, base, jitter, errorRate))
 	}
@@ -83,7 +82,7 @@ func routes(errorRate float64) http.Handler {
 	handle("DELETE /v1/pets/{petId}", http.StatusNoContent, 20*time.Millisecond, 20*time.Millisecond)
 	handle("PATCH /v1/pets/{petId}", http.StatusOK, 25*time.Millisecond, 30*time.Millisecond)
 	// The slow one. Every real API has one, and finding it on a latency
-	// heatmap is a thing people should be able to practise.
+	// heatmap is worth being able to practise.
 	handle("GET /v1/pets/{petId}/photos", http.StatusOK, 120*time.Millisecond, 180*time.Millisecond)
 	handle("GET /v1/admin/users", http.StatusOK, 15*time.Millisecond, 20*time.Millisecond)
 	// Health checks never fail and never lag.
@@ -102,8 +101,8 @@ func endpoint(status int, base, jitter time.Duration, errorRate float64) http.Ha
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		delay := base
 		if jitter > 0 {
-			// Squaring the random factor gives a long right tail, which is what
-			// real latency looks like — and what makes p95 differ from p50.
+			// Squaring gives a long right tail, which is what real latency looks
+			// like and what makes p95 differ from p50.
 			f := rand.Float64()
 			delay += time.Duration(f * f * float64(jitter))
 		}
@@ -133,9 +132,9 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-// logging is intentionally minimal — at a few hundred requests a second, a log
-// line per request is the loudest thing in the compose output and drowns
-// everything useful. The counter is atomic because handlers run concurrently.
+// logging stays minimal. At a few hundred requests a second, a line per request
+// is the loudest thing in the compose output. The counter is atomic because
+// handlers run concurrently.
 func logging(next http.Handler) http.Handler {
 	var count atomic.Int64
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

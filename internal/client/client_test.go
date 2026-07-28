@@ -221,10 +221,9 @@ func TestBackoffIsInterruptedByCancellation(t *testing.T) {
 }
 
 // A run bounded by --duration ends with in-flight requests failing as
-// DeadlineExceeded — indistinguishable from a real per-request timeout except
-// by the state of the context. Miscounting these marks a healthy target down
-// at the end of every bounded run, which then lands in target_up and in any
-// alert wired to it.
+// DeadlineExceeded, indistinguishable from a real per-request timeout except by
+// the state of the context. Miscounting them marks a healthy target down at the
+// end of every bounded run, which then lands in target_up.
 func TestDeadlineFromRunDurationIsNotATargetFailure(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(500 * time.Millisecond)
@@ -301,8 +300,8 @@ func TestCancelledContextIsNotCountedAsTargetFailure(t *testing.T) {
 	}
 }
 
-// A single enormous response must not be read into memory unbounded — over
-// weeks that is the difference between a flat RSS and an OOM kill.
+// A single enormous response must not be read into memory unbounded. Over
+// weeks that is the difference between flat RSS and an OOM kill.
 func TestResponseBodyIsBounded(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		chunk := strings.Repeat("x", 8<<10)

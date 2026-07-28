@@ -227,8 +227,8 @@ func TestInitWritesAUsableConfig(t *testing.T) {
 		t.Fatalf("init did not write spoofy.yaml: %v", err)
 	}
 
-	// The generated file must actually load and validate — a starter config
-	// that errors on first run is worse than no starter config.
+	// The generated file has to load and validate. A starter config that errors
+	// on first run is worse than none.
 	cfg, err := settings.Load("spoofy.yaml")
 	if err != nil {
 		t.Fatalf("generated config does not parse: %v", err)
@@ -237,12 +237,28 @@ func TestInitWritesAUsableConfig(t *testing.T) {
 		t.Fatalf("generated config does not validate: %v", err)
 	}
 
-	// Every documented shape should be mentioned, since the file is the
-	// primary place people learn the format.
-	for _, shape := range settings.ValidShapes {
-		if !strings.Contains(string(body), shape) {
-			t.Errorf("generated config never mentions the %q shape", shape)
+	// Every setting is live, not commented out. This is a file people edit and
+	// commit, so commented-out alternatives would be noise in every subsequent
+	// diff; the option reference belongs in the readme instead.
+	for _, key := range []string{"target:", "spec:", "traffic:", "safety:", "metrics:"} {
+		if !strings.Contains(string(body), key) {
+			t.Errorf("generated config is missing the %q section", key)
 		}
+	}
+	if commented := countCommentedSettings(string(body)); commented > 0 {
+		t.Errorf("generated config still contains %d commented-out settings", commented)
+	}
+
+	// The values have to be the real defaults, or the file lies about what
+	// Spoofy will do when run.
+	if cfg.Traffic.Rate.PerSecond() != 10 {
+		t.Errorf("rate = %v, want 10/s", cfg.Traffic.Rate)
+	}
+	if cfg.Safety.AllowWrites {
+		t.Error("the generated config must not enable writes")
+	}
+	if cfg.Safety.MaxRate != settings.DefaultMaxRate {
+		t.Errorf("max_rate = %v, want the default %v", cfg.Safety.MaxRate, settings.DefaultMaxRate)
 	}
 
 	t.Run("refuses to clobber without --force", func(t *testing.T) {
@@ -303,4 +319,43 @@ func writeFile(t *testing.T, path, body string) {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// countCommentedSettings finds lines that are a commented-out `key: value`, as
+// distinct from prose or a documentation link.
+func countCommentedSettings(body string) int {
+	isYAMLKey := func(s string) bool {
+		if s == "" {
+			return false
+		}
+		for _, r := range s {
+			switch {
+			case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_':
+			default:
+				return false
+			}
+		}
+		return true
+	}
+
+	var n int
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		content := strings.TrimSpace(strings.TrimPrefix(trimmed, "#"))
+		content = strings.TrimPrefix(content, "- ")
+
+		key, rest, ok := strings.Cut(content, ":")
+		if !ok || !isYAMLKey(key) {
+			continue
+		}
+		// YAML wants a space after the colon, which is what separates a real
+		// `key: value` from the "https://" in a documentation link.
+		if rest == "" || strings.HasPrefix(rest, " ") {
+			n++
+		}
+	}
+	return n
 }

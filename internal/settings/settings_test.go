@@ -167,9 +167,9 @@ func TestEndpointRules(t *testing.T) {
 }
 
 // A rule written as a bare `- match: /health` leaves Weight at zero. Treating
-// that as an exclusion would silently drop an endpoint its author plainly
-// meant to include — and YAML cannot distinguish an omitted number from an
-// explicit 0, so skip is the only way to exclude.
+// that as an exclusion would silently drop an endpoint its author meant to
+// include, and YAML cannot distinguish an omitted number from an explicit 0,
+// so skip is the only way to exclude.
 func TestZeroWeightMeansDefaultNotExcluded(t *testing.T) {
 	cfg := Default()
 	cfg.Endpoints = []EndpointRule{{Match: "/health"}}

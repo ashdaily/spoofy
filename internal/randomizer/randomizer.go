@@ -1,15 +1,14 @@
 // Package randomizer turns an OpenAPI schema into a plausible concrete value.
 //
-// "Plausible" is the whole point. A generator that emits syntactically valid
-// but semantically absurd data produces an environment full of 400s and 404s,
-// which is worse than no traffic at all: the dashboards look busy and prove
-// nothing. So the strategy is a strict preference order, from what the spec
-// author actually wrote down to what we had to invent:
+// Values that are syntactically valid but semantically absurd produce an
+// environment full of 400s, where the dashboards look busy and prove nothing.
+// So generation follows a strict preference order, from what the spec author
+// wrote down to what we had to invent:
 //
 //	example -> examples -> default -> const -> enum -> format -> pattern -> type
 //
-// Spec-provided examples come first because they are real values from someone
-// who knows the API. Free realism, and the cheapest defence against 404 soup.
+// Spec examples come first because they are real values from someone who knows
+// the API.
 package randomizer
 
 import (
@@ -24,21 +23,20 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-// defaultMaxDepth bounds recursion. Self-referential schemas (a Node with
-// children of type Node) are common and would otherwise recurse until the
-// stack gives out — in a daemon, hours after it started.
+// defaultMaxDepth bounds recursion. Self-referential schemas are common and
+// would otherwise recurse until the stack gives out, hours into a run.
 const defaultMaxDepth = 6
 
 // optionalFieldChance is how often an optional property is included. Always
-// including them makes every payload identical in shape; never including them
-// under-exercises the API. Two-in-three produces varied but substantial bodies.
+// including them makes every payload the same shape; never including them
+// under-exercises the API.
 const optionalFieldChance = 0.66
 
 // Randomizer generates values from schemas.
 //
-// It is NOT safe for concurrent use, matching math/rand.Rand. Give each worker
-// its own instance seeded from a common base — that keeps runs reproducible
-// per worker, which a shared mutex-guarded instance could not.
+// It is not safe for concurrent use, matching math/rand.Rand. Give each worker
+// its own instance seeded from a common base; a shared mutex-guarded instance
+// would lose per-worker reproducibility.
 type Randomizer struct {
 	rng      *rand.Rand
 	maxDepth int
@@ -70,7 +68,7 @@ func (r *Randomizer) value(s *openapi3.Schema, depth int) any {
 		return nil
 	}
 
-	// Anything the spec author wrote by hand beats anything we invent.
+	// Anything written by hand in the spec beats anything generated.
 	if s.Example != nil {
 		return s.Example
 	}
@@ -118,8 +116,7 @@ func (r *Randomizer) value(s *openapi3.Schema, depth int) any {
 	return r.word()
 }
 
-// shallowValue is the depth-limit fallback: a valid value of the right type
-// that does not recurse.
+// shallowValue is the depth-limit fallback: correct type, no recursion.
 func (r *Randomizer) shallowValue(s *openapi3.Schema) any {
 	switch {
 	case hasType(s, "string"):
@@ -152,8 +149,8 @@ func (r *Randomizer) pickBranch(oneOf, anyOf openapi3.SchemaRefs) *openapi3.Sche
 	return ref.Value
 }
 
-// allOf composes the branches into one object. Non-object branches are rare in
-// practice; if one appears, its value is returned directly rather than dropped.
+// allOf composes the branches into one object. A non-object branch is rare, and
+// its value is returned directly instead of being dropped.
 func (r *Randomizer) allOf(s *openapi3.Schema, depth int) any {
 	merged := make(map[string]any)
 	for _, ref := range s.AllOf {
@@ -186,10 +183,8 @@ func (r *Randomizer) object(s *openapi3.Schema, depth int) any {
 		required[name] = true
 	}
 
-	// Sorted, not map order. Go randomises map iteration, which would consume
-	// the rng in a different sequence on every run and quietly break --seed
-	// reproducibility — the kind of bug that only shows up when you try to
-	// reproduce an incident and cannot.
+	// Sorted, not map order. Go randomises map iteration, which would draw from
+	// the rng in a different sequence each run and break --seed reproducibility.
 	for _, name := range sortedProps(s.Properties) {
 		ref := s.Properties[name]
 		if ref == nil || ref.Value == nil {
@@ -205,9 +200,8 @@ func (r *Randomizer) object(s *openapi3.Schema, depth int) any {
 		out[name] = r.value(ref.Value, depth+1)
 	}
 
-	// Required properties must be present even if the loop above skipped them
-	// (for instance a required read-only field, which is a spec bug we should
-	// not turn into a malformed request). s.Required is a slice, so this is
+	// Required properties must be present even if the loop above skipped them,
+	// such as a required read-only field. s.Required is a slice, so this is
 	// already deterministic.
 	for _, name := range s.Required {
 		if _, ok := out[name]; ok {
@@ -272,8 +266,8 @@ func (r *Randomizer) String(s *openapi3.Schema) string {
 		if v, ok := GeneratePattern(r.rng, s.Pattern); ok {
 			return v
 		}
-		// Falling through on an unsupported pattern is deliberate: a plausible
-		// string that may fail validation beats an empty one that certainly will.
+		// Fall through on an unsupported pattern: a plausible string that might
+		// fail validation beats an empty one that certainly will.
 	}
 
 	minLen := int(s.MinLength)
@@ -373,8 +367,8 @@ func (r *Randomizer) Integer(s *openapi3.Schema) int64 {
 	return v
 }
 
-// Number generates a float within the schema's bounds, rounded to two decimal
-// places because most real APIs carry money or measurements, not raw float64s.
+// Number generates a float within the schema's bounds, rounded to two decimals
+// since most APIs carry money or measurements.
 func (r *Randomizer) Number(s *openapi3.Schema) float64 {
 	lo, hi := 0.0, 1000.0
 	if s.Min != nil {
@@ -401,8 +395,8 @@ func (r *Randomizer) uuid() string {
 }
 
 func (r *Randomizer) recentTime() time.Time {
-	// A fixed anchor keeps seeded runs reproducible; drifting off time.Now()
-	// would make golden-value tests flaky.
+	// A fixed anchor keeps seeded runs reproducible; time.Now() would make
+	// golden-value tests flaky.
 	anchor := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	return anchor.Add(time.Duration(r.rng.Int63n(int64(365 * 24 * time.Hour))))
 }

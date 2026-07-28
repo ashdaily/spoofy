@@ -86,9 +86,9 @@ func TestPathLabelStaysTemplated(t *testing.T) {
 func TestTransportErrorsAreBucketedNotFreeText(t *testing.T) {
 	m := New()
 
-	// Every one of these carries a unique address or message. If the label were
-	// the error string, each would create its own time series — a cardinality
-	// bomb that arrives precisely when the network is already misbehaving.
+	// Each carries a unique address or message. If the label were the error
+	// string, every one would create its own time series, right when the network
+	// is already misbehaving.
 	errs := []error{
 		errors.New("dial tcp 10.0.0.1:8080: connect: connection refused"),
 		errors.New("dial tcp 10.0.0.2:8080: connect: connection refused"),

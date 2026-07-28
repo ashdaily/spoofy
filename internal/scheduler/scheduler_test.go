@@ -63,9 +63,9 @@ func TestRunWaitsForInFlightWork(t *testing.T) {
 	}
 }
 
-// Pacing is checked with a wide band. The precise number depends on scheduler
-// timing, but an order-of-magnitude error — no limiting at all, or a limiter
-// that never releases — must fail.
+// Pacing is checked with a wide band, since the precise number depends on
+// scheduler timing. An order-of-magnitude error, meaning no limiting at all or
+// a limiter that never releases, still has to fail.
 func TestRunPacesRoughlyToTheTargetRate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("timing-sensitive")

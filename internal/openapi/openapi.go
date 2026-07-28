@@ -1,10 +1,9 @@
-// Package openapi loads an OpenAPI document and flattens it into the small,
-// concrete list of operations Spoofy actually needs.
+// Package openapi loads an OpenAPI document and flattens it into the list of
+// operations Spoofy needs.
 //
-// The rest of the codebase never touches the raw document. Everything
-// downstream works from []*Operation, which keeps spec-shaped complexity —
-// $ref resolution, parameter inheritance, 3.0-vs-3.1 differences — contained
-// in one package instead of leaking into request generation.
+// Nothing downstream touches the raw document. Keeping $ref resolution,
+// parameter inheritance, and 3.0-versus-3.1 differences in one package stops
+// that complexity leaking into request generation.
 package openapi
 
 import (
@@ -26,9 +25,9 @@ type Operation struct {
 	ID string
 	// Method is the uppercase HTTP method.
 	Method string
-	// Path is the templated path exactly as written in the spec, e.g.
+	// Path is the templated path as written in the spec, e.g.
 	// "/orders/{orderId}". Metrics label on this, never the concrete URL, or
-	// Prometheus cardinality explodes over a long run.
+	// Prometheus cardinality grows without bound.
 	Path string
 	// Summary is the spec's human description, shown in dry-run output.
 	Summary string
@@ -54,11 +53,10 @@ type Spec struct {
 
 // Load reads an OpenAPI document from a file path or an http(s) URL.
 //
-// External $ref resolution is deliberately left disabled. kin-openapi will
-// otherwise follow references out of the document, which on a spec you did not
-// write means local file reads (`$ref: "/etc/passwd"`) and SSRF against
-// metadata endpoints. Specs are frequently fetched from a running service, so
-// treating them as untrusted input is the correct default.
+// External $ref resolution stays off. kin-openapi would otherwise follow
+// references out of the document, which on a spec you did not write means local
+// file reads (`$ref: "/etc/passwd"`) and SSRF against metadata endpoints. Specs
+// are often fetched from a running service, so they are untrusted input.
 func Load(ctx context.Context, source string) (*Spec, error) {
 	loader := openapi3.NewLoader()
 	loader.Context = ctx
@@ -87,8 +85,8 @@ func Load(ctx context.Context, source string) (*Spec, error) {
 	return FromDocument(doc)
 }
 
-// FromDocument flattens an already-parsed document. Exported so tests can build
-// documents in memory without touching the filesystem.
+// FromDocument flattens an already-parsed document, so tests can build one in
+// memory without touching the filesystem.
 func FromDocument(doc *openapi3.T) (*Spec, error) {
 	if doc == nil {
 		return nil, fmt.Errorf("spec is empty")
@@ -156,13 +154,12 @@ func buildOperation(path, method string, item *openapi3.PathItem, op *openapi3.O
 	return out
 }
 
-// mergeParams implements the OpenAPI inheritance rule: parameters declared on
-// the path item apply to every operation under it, and an operation-level
-// parameter with the same name+location replaces the inherited one.
+// mergeParams implements the OpenAPI inheritance rule: parameters on the path
+// item apply to every operation under it, and an operation-level parameter with
+// the same name and location replaces the inherited one.
 //
-// Getting this wrong is a quiet bug — the operation still builds, it just omits
-// a required path parameter and every request 404s — so it is worth doing
-// explicitly rather than by concatenation.
+// Getting this wrong fails quietly. The operation still builds, it just omits a
+// required path parameter and every request 404s.
 func mergeParams(pathLevel, opLevel openapi3.Parameters) []*openapi3.Parameter {
 	type key struct{ name, in string }
 
@@ -191,8 +188,8 @@ func mergeParams(pathLevel, opLevel openapi3.Parameters) []*openapi3.Parameter {
 	return out
 }
 
-// synthesiseID builds a stable identifier for operations lacking an
-// operationId, which is common in hand-written specs.
+// synthesiseID builds a stable identifier for operations with no operationId,
+// which is common in hand-written specs.
 func synthesiseID(method, path string) string {
 	cleaned := strings.NewReplacer("/", "_", "{", "", "}", "").Replace(path)
 	cleaned = strings.Trim(cleaned, "_")
@@ -224,9 +221,9 @@ type Selector interface {
 // Select filters operations through a Selector, returning the survivors and a
 // per-reason count of what was excluded.
 //
-// The counts exist so the CLI can say "42 operations, 13 skipped (write
-// methods)" at startup. Silently dropping most of a spec and then reporting
-// healthy traffic is the failure mode most likely to waste someone's afternoon.
+// The counts let the CLI say "42 operations, 13 skipped (write methods)" at
+// startup, so a run that quietly drops most of a spec cannot pass for a healthy
+// one.
 func (s *Spec) Select(sel Selector) (kept []*Operation, skippedByMethod, skippedByPath int) {
 	for _, op := range s.Operations {
 		switch {

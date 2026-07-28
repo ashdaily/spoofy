@@ -275,7 +275,7 @@ properties:
 }
 
 // A self-referential schema is common and would recurse forever without a
-// depth limit — in a daemon, hours after startup rather than immediately.
+// depth limit, hours into a run rather than immediately.
 func TestCyclicSchemaTerminates(t *testing.T) {
 	node := &openapi3.Schema{
 		Type:       &openapi3.Types{"object"},

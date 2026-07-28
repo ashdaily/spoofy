@@ -1,5 +1,5 @@
-# The demo target API. Built the same way as Spoofy itself so the compose stack
-# needs nothing from the internet beyond Prometheus and Grafana.
+# The demo target API, built the same way as Spoofy so the compose stack needs
+# nothing from the internet beyond Prometheus and Grafana.
 
 FROM golang:1.26-alpine AS build
 

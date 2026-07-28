@@ -1,10 +1,9 @@
 // Package client executes generated requests and reports what happened.
 //
-// The interesting behaviour here is what it does when the target is unhealthy.
-// A load tester that hammers a failing service is doing its job; a daemon that
-// does the same is an amplifier for someone else's outage, and it runs for
-// weeks. So the client backs off when the target stops answering, and
-// publishes whether it believes the target is up.
+// The behaviour worth knowing about is what happens when the target is
+// unhealthy. A load tester hammering a failing service is doing its job; a
+// daemon doing it for a week amplifies someone else's outage. So the client
+// backs off when the target stops answering and publishes what it believes.
 package client
 
 import (
@@ -17,30 +16,28 @@ import (
 )
 
 const (
-	// failureThreshold is how many consecutive failures before backing off.
-	// A couple of blips during a rolling deploy should not change behaviour;
-	// a sustained outage should.
+	// failureThreshold is how many consecutive failures before backing off. A
+	// couple of blips during a rolling deploy should not change behaviour; a
+	// sustained outage should.
 	failureThreshold = 3
 
-	// maxBackoff caps the wait. Beyond about half a minute, a longer wait adds
-	// nothing but makes recovery detection sluggish — and noticing that the
-	// target came back is the whole point.
+	// maxBackoff caps the wait. A longer one adds nothing and slows down
+	// noticing that the target came back.
 	maxBackoff = 30 * time.Second
 
 	baseBackoff = 250 * time.Millisecond
 
-	// maxBodyBytes bounds how much of a response is read. The body is discarded
-	// anyway; reading it exists only so the connection can be reused. Without a
-	// cap, one endpoint returning a huge payload would dominate memory for the
-	// life of the daemon.
+	// maxBodyBytes bounds how much of a response is read. The body is discarded;
+	// reading it only exists so the connection can be reused. Without a cap, one
+	// large-payload endpoint would dominate memory for the life of the process.
 	maxBodyBytes = 64 << 10
 )
 
 // Result describes one completed request.
 type Result struct {
 	// OperationID, Method, and Path identify what was attempted. Path is the
-	// templated form ("/pets/{petId}"), never the concrete URL — metrics label
-	// on it, and concrete URLs would make cardinality unbounded.
+	// templated form ("/pets/{petId}"), never the concrete URL: metrics label on
+	// it, and concrete URLs would make cardinality unbounded.
 	OperationID string
 	Method      string
 	Path        string
@@ -50,8 +47,8 @@ type Result struct {
 	BytesRead  int64
 
 	// Err is set for transport-level failures: connection refused, DNS, TLS,
-	// timeout. An HTTP error response is not an Err — a 500 means the target
-	// answered, which is a different fact from the target being unreachable.
+	// timeout. An HTTP error response is not an Err. A 500 means the target
+	// answered, which is a different fact from it being unreachable.
 	Err error
 }
 
@@ -97,8 +94,8 @@ func New(timeout time.Duration, concurrency int) *Client {
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	// Idle connections must at least match concurrency, or workers repeatedly
-	// open and discard sockets. Over weeks that shows up as port exhaustion on
-	// the host rather than as anything visible in the tool.
+	// open and discard sockets. Over weeks that surfaces as port exhaustion on
+	// the host, not as anything visible in the tool.
 	transport.MaxIdleConns = concurrency * 2
 	transport.MaxIdleConnsPerHost = concurrency * 2
 	transport.IdleConnTimeout = 90 * time.Second
@@ -143,14 +140,13 @@ func (c *Client) Do(ctx context.Context, req *http.Request, op OperationRef) Res
 	if err != nil {
 		result.Err = err
 
-		// Shutdown is not a target failure. The discriminator is the state of
-		// the context we were handed, not the error we got back: a request cut
-		// short by --duration surfaces as DeadlineExceeded, exactly like a
-		// genuine per-request timeout, and only ctx.Err() tells the two apart.
+		// Shutdown is not a target failure, and the state of the context we were
+		// handed is what distinguishes the two. A request cut short by
+		// --duration fails as DeadlineExceeded, identical to a genuine
+		// per-request timeout; only ctx.Err() separates them.
 		//
-		// Getting this wrong marks a perfectly healthy target down every time
-		// the daemon stops, which then shows up in target_up and in whatever
-		// alert someone wired to it.
+		// Getting this wrong marks a healthy target down every time the daemon
+		// stops, which then lands in target_up and any alert wired to it.
 		if ctx.Err() != nil {
 			return result
 		}
@@ -166,16 +162,15 @@ func (c *Client) Do(ctx context.Context, req *http.Request, op OperationRef) Res
 	result.StatusCode = resp.StatusCode
 	result.BytesRead = n
 
-	// The target answered. Even a 500 means it is up — that distinction is why
-	// a 5xx does not trigger backoff. Spoofy exists partly to observe 5xx
-	// rates, so backing off on them would suppress the signal it was deployed
-	// to produce.
+	// The target answered. Even a 500 means it is up, which is why a 5xx does
+	// not trigger backoff: observing 5xx rates is part of the job, and backing
+	// off would suppress the signal.
 	c.recordSuccess()
 	return result
 }
 
-// OperationRef carries the identity of what is being requested, so Result can
-// be labelled without the client depending on the openapi package.
+// OperationRef identifies what is being requested, so Result can be labelled
+// without the client importing the openapi package.
 type OperationRef struct {
 	ID     string
 	Method string

@@ -1,8 +1,8 @@
 # Multi-stage build producing a static binary on scratch.
 #
-# The result is a couple of megabytes with no shell, no package manager, and no
-# CVE surface from a base distro — which matters more than usual here, because
-# this image is meant to sit in a namespace running continuously for months.
+# A couple of megabytes with no shell, no package manager, and no CVE surface
+# from a base distro. This image is meant to sit in a namespace running for
+# months, so that matters more than usual.
 
 FROM golang:1.26-alpine AS build
 
@@ -34,8 +34,7 @@ FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=build /out/spoofy /spoofy
 
-# Non-root by default. Nothing here needs privileges, and a traffic generator
-# is a poor place to hand any out.
+# Non-root by default. Nothing here needs privileges.
 USER 65534:65534
 
 EXPOSE 9090

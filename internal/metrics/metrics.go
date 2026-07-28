@@ -1,10 +1,9 @@
 // Package metrics publishes what Spoofy did, in Prometheus form.
 //
-// This is not incidental instrumentation — it is half the product. Spoofy
-// exists to put signal into a monitoring stack, and its own /metrics endpoint
-// is what lets you compare "traffic Spoofy sent" against "traffic the app
-// reports receiving". A gap between those two numbers is a real finding:
-// dropped requests, broken instrumentation, a misconfigured scrape.
+// This is half the product rather than incidental instrumentation. The endpoint
+// is what lets you compare traffic Spoofy sent against traffic the app reports
+// receiving; a gap between the two is a real finding, whether that is dropped
+// requests, broken instrumentation, or a misconfigured scrape.
 package metrics
 
 import (
@@ -25,9 +24,8 @@ const Namespace = "spoofy"
 
 // Metrics owns the collectors and the registry they live in.
 //
-// A dedicated registry rather than the global default: the global one carries
-// whatever any imported library decided to register, and a tool whose job is
-// producing clean signal should not export surprises.
+// A dedicated registry, not the global default, which carries whatever any
+// imported library decided to register.
 type Metrics struct {
 	registry *prometheus.Registry
 
@@ -46,9 +44,9 @@ type Metrics struct {
 func New() *Metrics {
 	m := &Metrics{registry: prometheus.NewRegistry()}
 
-	// Labels are deliberately few and bounded. `path` is always the templated
-	// form ("/pets/{petId}"); labelling with concrete URLs would add a new time
-	// series per pet id and take Prometheus down within a day.
+	// Labels are few and bounded. `path` is always the templated form
+	// ("/pets/{petId}"); concrete URLs would add a time series per pet id and
+	// take Prometheus down within a day.
 	m.requests = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: Namespace,
 		Name:      "requests_total",
@@ -59,8 +57,8 @@ func New() *Metrics {
 		Namespace: Namespace,
 		Name:      "request_duration_seconds",
 		Help:      "Request latency as observed by Spoofy.",
-		// Buckets span 1ms to ~16s: local calls at the bottom, timeouts at the
-		// top. The default buckets bunch around 100ms and lose both ends.
+		// 1ms to ~16s: local calls at the bottom, timeouts at the top. The
+		// default buckets bunch around 100ms and lose both ends.
 		Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 16},
 	}, []string{"method", "path"})
 
@@ -103,9 +101,8 @@ func New() *Metrics {
 	m.registry.MustRegister(
 		m.requests, m.duration, m.errors, m.bytes,
 		m.targetUp, m.targetRate, m.inFlight, m.buildErrors,
-		// Go runtime and process collectors: the soak test needs to see whether
-		// RSS is flat over a week, and that answer belongs on the same endpoint
-		// as everything else.
+		// Runtime and process collectors, so "is RSS flat after a week" is
+		// answerable from the same endpoint as everything else.
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
@@ -156,10 +153,8 @@ func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
 }
 
-// Serve runs the metrics endpoint until ctx is cancelled.
-//
-// It also serves /healthz, because anything deployed to Kubernetes needs a
-// probe target and making operators invent one is a papercut.
+// Serve runs the metrics endpoint until ctx is cancelled. It also serves
+// /healthz, since anything running under Kubernetes needs a probe target.
 func (m *Metrics) Serve(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", m.Handler())
@@ -190,9 +185,9 @@ func (m *Metrics) Serve(ctx context.Context, addr string) error {
 	return nil
 }
 
-// errorKind buckets transport failures into a small, bounded label set.
-// Using err.Error() directly would put a unique label on every failure — a
-// cardinality bomb on a flaky network.
+// errorKind buckets transport failures into a bounded label set. err.Error()
+// would put a unique label on every failure, which on a flaky network is a
+// cardinality bomb.
 func errorKind(err error) string {
 	switch {
 	case errors.Is(err, context.Canceled):

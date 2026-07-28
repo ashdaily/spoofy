@@ -8,12 +8,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Rate is a request rate, stored internally as requests per second.
+// Rate is a request rate, stored as requests per second.
 //
-// It exists so config can say what an engineer would say out loud — "20/s",
-// "1200/m", "5/min" — instead of forcing everyone to convert to a bare float.
-// The unit is the part people get wrong; making it explicit in the config text
-// means a misread is visible in review rather than discovered in Grafana.
+// Config writes it with an explicit unit ("20/s", "1200/m") because the unit is
+// the part people get wrong, and a mistake is easier to catch in review than in
+// Grafana.
 type Rate float64
 
 // unitDivisors maps a written unit to the number of seconds it spans.
@@ -56,8 +55,8 @@ func ParseRate(s string) (Rate, error) {
 // PerSecond returns the rate in requests per second.
 func (r Rate) PerSecond() float64 { return float64(r) }
 
-// String renders the rate in whichever unit reads most naturally, so that a
-// rate parsed from "30/m" does not echo back as "0.5/s" in logs and errors.
+// String picks whichever unit reads most naturally, so a rate written as "30/m"
+// does not echo back as "0.5/s".
 func (r Rate) String() string {
 	switch v := float64(r); {
 	case v == 0:
@@ -75,12 +74,11 @@ func trimFloat(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
-// UnmarshalYAML accepts both `rate: 20/s` and `rate: 20`, so neither a quoted
-// string nor a bare number is a mistake.
+// UnmarshalYAML accepts both `rate: 20/s` and `rate: 20`.
 //
-// The branch is chosen from the YAML node tag, not from a failed decode: a bare
-// 20 decodes cleanly into a Go string, which would make a decode-failure
-// fallback unreachable.
+// The branch comes from the YAML node tag rather than a failed decode, because
+// a bare 20 decodes cleanly into a Go string and would make the numeric branch
+// unreachable.
 func (r *Rate) UnmarshalYAML(node *yaml.Node) error {
 	if node.Tag == "!!int" || node.Tag == "!!float" {
 		var f float64

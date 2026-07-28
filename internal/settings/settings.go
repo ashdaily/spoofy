@@ -1,22 +1,7 @@
-// Package settings holds Spoofy's configuration, its file format, and the
-// safety rails that keep a long-running traffic generator from becoming an
-// incident.
+// Package settings holds Spoofy's configuration and its safety rails.
 //
-// Two design rules govern everything here:
-//
-//  1. Zero config must work. `spoofy run --url X` with a discoverable spec is a
-//     complete invocation. The config file is for when you want more, never a
-//     prerequisite for getting started.
-//
-//  2. The file should read like a sentence an engineer would say. "twenty
-//     requests a second, shaped like a normal day" becomes `rate: 20/s` and
-//     `shape: diurnal`. Anything requiring a unit conversion in the reader's
-//     head is a bug in the format.
-//
-// Spoofy also runs unattended for weeks, which makes its defaults more
-// consequential than a one-shot tool's: a bad value is not a bad run, it is a
-// bad month. Defaults err toward refusing to start over doing something
-// surprising.
+// Spoofy runs unattended for long stretches, so a bad default costs weeks
+// rather than one run. Defaults here err toward refusing to start.
 package settings
 
 import (
@@ -40,10 +25,8 @@ const (
 	DefaultTimeout     = Duration(10 * time.Second)
 	DefaultMetricsAddr = ":9090"
 
-	// DefaultMaxRate caps sustained throughput unless raised explicitly.
-	// Spoofy exists to make an environment look alive, not to load-test it, so
-	// a fat-fingered rate should not be able to flatten staging overnight while
-	// nobody is watching.
+	// DefaultMaxRate caps sustained throughput unless raised explicitly, so a
+	// mistyped rate cannot flatten an environment overnight.
 	DefaultMaxRate = Rate(200)
 )
 
@@ -60,8 +43,7 @@ const (
 var ValidShapes = []string{ShapeConstant, ShapeDiurnal, ShapeRamp, ShapeSpike}
 
 // safeMethods are exercised without opting into writes. Everything else can
-// create, mutate, or destroy data, and a daemon doing that unattended for a
-// week is a data-loss incident rather than a traffic generator.
+// create, mutate, or destroy data.
 var safeMethods = map[string]bool{
 	http.MethodGet:     true,
 	http.MethodHead:    true,
@@ -89,18 +71,16 @@ type Config struct {
 
 // Traffic describes how much load to produce and what shape it takes over time.
 //
-// Rate is always the *average*. Shapes modulate around it rather than replacing
-// it, so changing `shape` never silently changes how much total traffic you
-// generate — that is the single most important property of this format, because
-// it means a user can try shapes without recalculating anything.
+// Rate is always the average. Shapes modulate around it, so changing shape
+// redistributes traffic without changing the total.
 type Traffic struct {
 	Rate        Rate     `yaml:"rate"`
 	Shape       string   `yaml:"shape"`
 	Concurrency int      `yaml:"concurrency"`
 	Timeout     Duration `yaml:"timeout"`
 
-	// Amplitude controls how far diurnal traffic swings from the average, as a
-	// fraction: 0.6 means the peak is 1.6x the average and the trough 0.4x.
+	// Amplitude is how far diurnal traffic swings from the average, as a
+	// fraction: 0.6 puts the peak at 1.6x the average and the trough at 0.4x.
 	Amplitude float64 `yaml:"amplitude"`
 	// Period is the length of one diurnal cycle. Defaults to 24h.
 	Period Duration `yaml:"period"`
@@ -117,22 +97,21 @@ type Traffic struct {
 }
 
 // EndpointRule adjusts how a matched set of paths is treated. Rules are
-// evaluated in order and the first match wins, like a routing table — the
-// alternative (last match wins) makes a config's behaviour depend on how far
-// you have read, which is exactly the learning curve this format avoids.
+// evaluated in order and the first match wins, like a routing table. Last
+// match wins would make a config's meaning depend on how far you have read.
 type EndpointRule struct {
 	// Match is a glob against the templated path, e.g. "/orders/{id}" or
 	// "/admin/*". "*" spans any characters including "/".
 	Match string `yaml:"match"`
-	// Skip excludes matching endpoints entirely. This is the only way to
-	// exclude something — weight is purely a bias.
+	// Skip excludes matching endpoints. This is the only way to exclude one;
+	// weight is purely a bias.
 	Skip bool `yaml:"skip"`
 	// Weight biases selection. Unset means 1; 5 means five times as likely.
 	//
-	// Zero is treated as unset rather than as an exclusion. YAML cannot tell
-	// an omitted number from an explicit 0 without a pointer, so making 0 mean
-	// "never send this" would silently drop every rule written as a bare
-	// `- match: /orders` — a rule whose author plainly meant to include it.
+	// Zero counts as unset, not as an exclusion. YAML cannot distinguish an
+	// omitted number from an explicit 0 without a pointer, so treating 0 as
+	// "never send this" would silently drop any rule written as a bare
+	// `- match: /orders`.
 	Weight float64 `yaml:"weight"`
 }
 
@@ -149,8 +128,8 @@ type BasicAuth struct {
 	Pass string `yaml:"pass"`
 }
 
-// Apply attaches configured credentials to req. Explicit headers are applied
-// last so they can override the higher-level shorthands.
+// Apply attaches configured credentials to req. Explicit headers go last so
+// they override the higher-level shorthands.
 func (a Auth) Apply(req *http.Request) {
 	if a.Bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+a.Bearer)
@@ -163,8 +142,8 @@ func (a Auth) Apply(req *http.Request) {
 	}
 }
 
-// Safety gathers the rails. They are grouped rather than scattered so that
-// reviewing "what could this config do to my environment" is one glance.
+// Safety gathers the rails in one block, so reviewing what a config can do to
+// an environment is a single glance.
 type Safety struct {
 	AllowWrites bool `yaml:"allow_writes"`
 	AllowProd   bool `yaml:"allow_prod"`
@@ -174,9 +153,7 @@ type Safety struct {
 // Metrics configures the Prometheus endpoint.
 type Metrics struct {
 	Addr string `yaml:"addr"`
-	// Disabled turns the endpoint off. Phrased negatively so that the zero
-	// value — an omitted block — leaves metrics on, which is the point of the
-	// tool.
+	// Disabled is phrased negatively so an omitted block leaves metrics on.
 	Disabled bool `yaml:"disabled"`
 }
 
@@ -203,8 +180,8 @@ var SpecFileNames = []string{
 	"swagger.yaml", "swagger.yml", "swagger.json",
 }
 
-// DiscoverConfig looks for a config file in dir. Empty string means none found,
-// which is not an error: running without a config file is a supported mode.
+// DiscoverConfig looks for a config file in dir. An empty result means none was
+// found, which is fine: running without a config file is supported.
 func DiscoverConfig(dir string) string {
 	return discover(dir, ConfigFileNames)
 }
@@ -224,14 +201,12 @@ func discover(dir string, names []string) string {
 	return ""
 }
 
-// envRef matches ${NAME} only. Bare $NAME is deliberately left alone: secrets
-// and passwords contain "$" often enough that expanding it silently would
-// corrupt credentials in ways that are miserable to debug.
+// envRef matches ${NAME} only. Bare $NAME is left alone because passwords
+// contain "$" often enough that expanding it would corrupt credentials.
 var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 // ExpandEnv replaces ${NAME} with the environment value, leaving unset
-// variables as the empty string. This is what makes a config file safe to
-// commit: `bearer: ${API_TOKEN}` keeps the secret out of the repo.
+// variables empty. It is what makes a config file safe to commit.
 func ExpandEnv(b []byte) []byte {
 	return envRef.ReplaceAllFunc(b, func(m []byte) []byte {
 		name := string(envRef.FindSubmatch(m)[1])
@@ -240,9 +215,8 @@ func ExpandEnv(b []byte) []byte {
 }
 
 // Load reads and parses a config file, expanding ${ENV} references. Unknown
-// fields are an error: a typo'd key that is silently ignored produces a daemon
-// that runs for a week doing the wrong thing, which is the worst outcome this
-// package can produce.
+// fields are an error, so a typo fails at startup instead of quietly changing
+// nothing for a week.
 func Load(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -283,8 +257,8 @@ func (c *Config) ApplyDefaults() {
 	}
 }
 
-// Validate reports every problem at once rather than making the user rediscover
-// them one restart at a time.
+// Validate reports every problem at once, so a user with four mistakes does not
+// need four restarts to find them.
 func (c *Config) Validate() error {
 	var errs []error
 
@@ -341,7 +315,7 @@ func (c *Config) validateTraffic() []error {
 	if t.Rate > c.Safety.MaxRate {
 		errs = append(errs, fmt.Errorf(
 			"traffic.rate %s exceeds the safety ceiling of %s.\n"+
-				"  Raise safety.max_rate if this is deliberate — the ceiling exists so a typo cannot flatten an environment",
+				"  Raise safety.max_rate if that is intended. The ceiling exists so a typo cannot flatten an environment",
 			t.Rate, c.Safety.MaxRate))
 	}
 	if t.Concurrency <= 0 {
@@ -357,8 +331,8 @@ func (c *Config) validateTraffic() []error {
 		return errs
 	}
 
-	// Shape-specific requirements. Each error names the exact keys to add,
-	// because "invalid ramp config" tells the reader nothing actionable.
+	// Each error names the exact keys to add, since "invalid ramp config" gives
+	// the reader nothing to act on.
 	switch t.Shape {
 	case ShapeDiurnal:
 		if t.Amplitude < 0 || t.Amplitude > 1 {
@@ -445,27 +419,23 @@ func (c *Config) WeightFor(templatedPath string) float64 {
 }
 
 // productionTokens mark a host as production. Matched against tokens split on
-// ".", "-", and "_" so that "api-prod.acme.com" matches while "prodigy.com"
-// does not.
+// ".", "-", and "_" so "api-prod.acme.com" matches but "prodigy.com" does not.
 var productionTokens = map[string]bool{
 	"prod": true, "production": true, "prd": true,
 }
 
-// nonProductionTokens are an explicit override: a host carrying one of these is
-// treated as safe even if it also carries a production token, because
-// "staging-prod-mirror" is a staging box.
+// nonProductionTokens override a production match, since "staging-prod-mirror"
+// is a staging box.
 var nonProductionTokens = map[string]bool{
 	"staging": true, "stage": true, "stg": true, "dev": true, "devel": true,
 	"development": true, "test": true, "testing": true, "qa": true, "uat": true,
 	"sandbox": true, "sbx": true, "local": true, "localhost": true, "demo": true,
 }
 
-// LooksLikeProduction applies a deliberately conservative heuristic to a host.
-//
-// It refuses only on an explicit production marker, and never infers from the
-// absence of one. Guessing would reject legitimate targets like a bare internal
-// hostname, and a safety rail that fires during correct usage is a safety rail
-// people switch off permanently.
+// LooksLikeProduction refuses only on an explicit production marker and never
+// infers from the absence of one. Guessing would reject legitimate targets such
+// as a bare internal hostname, and a rail that fires during correct use is one
+// people switch off for good.
 func LooksLikeProduction(host string) bool {
 	if h, _, ok := strings.Cut(host, ":"); ok && !strings.Contains(host, "]") {
 		host = h
@@ -486,9 +456,9 @@ func LooksLikeProduction(host string) bool {
 	return hasProd
 }
 
-// matchGlob matches a pattern where "*" spans any run of characters, including
-// "/". A user writing "/admin/*" means everything beneath /admin, which is not
-// what path.Match does — hence the hand-rolled matcher.
+// matchGlob treats "*" as spanning any characters, including "/". Someone
+// writing "/admin/*" means everything beneath /admin, which path.Match does not
+// do, hence the hand-rolled version.
 func matchGlob(pattern, s string) bool {
 	if pattern == "" {
 		return false

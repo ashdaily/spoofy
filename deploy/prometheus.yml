@@ -1,7 +1,6 @@
 # Scrape config for the Spoofy demo stack.
 #
-# A 5s interval rather than the usual 15s: a demo should show a curve within a
-# minute, not after a coffee break.
+# 5s rather than the usual 15s, so a demo shows a curve within a minute.
 
 global:
   scrape_interval: 5s

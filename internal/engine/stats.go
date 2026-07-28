@@ -8,21 +8,18 @@ import (
 	"github.com/ashdaily/spoofy/internal/client"
 )
 
-// latencySamples is the size of the ring buffer backing percentile estimates.
-// Fixed, not growing: this daemon runs for weeks, and an unbounded slice of
-// every latency ever observed is the most obvious way to leak memory slowly
-// enough that nobody notices until the pod is OOM-killed.
+// latencySamples sizes the ring buffer behind percentile estimates. Fixed
+// rather than growing: an unbounded slice of every latency ever observed leaks
+// slowly enough that nobody notices until the pod is OOM-killed.
 const latencySamples = 4096
 
 // rpsWindow is how many one-second buckets are kept for the achieved-rate
 // readout.
 const rpsWindow = 60
 
-// Stats accumulates what the live view shows.
-//
-// Prometheus is the durable record; this exists so the terminal can show
-// something useful without scraping itself. It is deliberately bounded in
-// memory regardless of how long the process runs.
+// Stats accumulates what the live view shows. Prometheus is the durable record;
+// this exists so the terminal can show something without scraping itself, and
+// stays bounded in memory however long the process runs.
 type Stats struct {
 	mu sync.Mutex
 
@@ -36,8 +33,8 @@ type Stats struct {
 	latCount  int
 	latNext   int
 
-	// perSecond is a ring of counts indexed by unix second, so the achieved
-	// rate reflects recent traffic rather than the lifetime average.
+	// perSecond is a ring indexed by unix second, so the achieved rate reflects
+	// recent traffic rather than the lifetime average.
 	perSecond [rpsWindow]int64
 	perSecSec [rpsWindow]int64
 }
@@ -112,8 +109,8 @@ func (s *Stats) Snapshot(now time.Time) Snapshot {
 		out.ByClass[k] = v
 	}
 
-	// Achieved rate over the last 5 whole seconds, excluding the current
-	// partial one — including it makes the number sag at every refresh.
+	// The last 5 whole seconds, excluding the current partial one, which would
+	// make the number sag at every refresh.
 	const window = 5
 	var sum int64
 	current := now.Unix()

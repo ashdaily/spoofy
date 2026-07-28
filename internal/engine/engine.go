@@ -1,9 +1,6 @@
-// Package engine wires the pieces together and runs the traffic loop.
-//
-// Everything else in Spoofy is a component with one job. This is where they
-// meet: the spec supplies operations, the scheduler decides when, the
-// generator builds a request, the client sends it, and metrics and stats record
-// what happened.
+// Package engine wires the pieces together and runs the traffic loop: the spec
+// supplies operations, the scheduler decides when, the generator builds a
+// request, the client sends it, and metrics record what happened.
 package engine
 
 import (
@@ -31,13 +28,12 @@ type Engine struct {
 	mx    *metrics.Metrics
 	stats *Stats
 
-	// workers is a pool of per-goroutine state. The randomizer and generator
-	// are not safe for concurrent use — matching math/rand — so rather than
-	// putting a mutex on the hot path, each concurrent worker borrows its own.
+	// workers is a pool of per-goroutine state. The randomizer and generator are
+	// not safe for concurrent use, so each worker borrows its own instead of
+	// putting a mutex on the hot path.
 	workers chan *worker
 
-	// cumulativeWeights supports weighted operation selection without
-	// re-summing the weights on every request.
+	// cumulativeWeights avoids re-summing weights on every request.
 	cumulativeWeights []float64
 	totalWeight       float64
 }
@@ -70,8 +66,8 @@ func New(cfg *settings.Config, ops []*openapi.Operation, mx *metrics.Metrics, no
 	}
 
 	for i := 0; i < cfg.Traffic.Concurrency; i++ {
-		// Each worker's seed is derived from the base, so a run is reproducible
-		// as a whole even though the workers are independent.
+		// Derived from the base seed, so the run as a whole stays reproducible
+		// even though workers are independent.
 		workerSeed := seed + int64(i)*7919
 		gen, err := generator.New(cfg.Target, randomizer.New(workerSeed), cfg.Auth)
 		if err != nil {
@@ -108,8 +104,8 @@ func (e *Engine) Operations() []*openapi.Operation { return e.ops }
 
 // Run generates traffic until ctx is cancelled, then drains.
 func (e *Engine) Run(ctx context.Context) {
-	// Keep target_up fresh even while idle, so a scrape during a quiet diurnal
-	// trough still reports health rather than a stale value.
+	// Keep target_up fresh while idle, so a scrape during a quiet diurnal trough
+	// reports health rather than a stale value.
 	go e.publishHealth(ctx)
 
 	e.sched.Run(ctx, e.once)
@@ -130,9 +126,9 @@ func (e *Engine) once(ctx context.Context) {
 
 	req, err := w.gen.Build(ctx, op)
 	if err != nil {
-		// A spec that cannot produce a request is a persistent condition, not a
-		// transient one. Counting it separately keeps it out of the HTTP error
-		// rate, where it would look like the target misbehaving.
+		// A spec that cannot produce a request is a persistent condition.
+		// Counting it separately keeps it out of the HTTP error rate, where it
+		// would look like the target misbehaving.
 		e.mx.RecordBuildError()
 		return
 	}
@@ -145,7 +141,7 @@ func (e *Engine) once(ctx context.Context) {
 	})
 	e.mx.DecInFlight()
 
-	// A request cut short by shutdown is not a data point about the target.
+	// A request cut short by shutdown says nothing about the target.
 	if ctx.Err() != nil && result.Err != nil {
 		return
 	}
@@ -161,8 +157,8 @@ func (e *Engine) pick(rng *rand.Rand) *openapi.Operation {
 	}
 
 	target := rng.Float64() * e.totalWeight
-	// Linear scan. Operation counts are in the tens or low hundreds, where this
-	// beats a binary search on cache behaviour and is far easier to read.
+	// Linear scan. Operation counts run to the low hundreds, where this beats a
+	// binary search on cache behaviour and reads more clearly.
 	for i, cumulative := range e.cumulativeWeights {
 		if target < cumulative {
 			return e.ops[i]
@@ -187,11 +183,9 @@ func (e *Engine) publishHealth(ctx context.Context) {
 	}
 }
 
-// DryRun builds one request per operation and returns them rendered as curl
-// commands, without sending anything.
-//
-// This is the answer to "what will this actually do to my environment", and it
-// has to be answerable before the first request rather than after.
+// DryRun builds one request per operation and renders them as curl commands
+// without sending anything, so "what will this do to my environment" is
+// answerable before the first request rather than after.
 func (e *Engine) DryRun(ctx context.Context) ([]string, error) {
 	w := <-e.workers
 	defer func() { e.workers <- w }()
@@ -203,7 +197,7 @@ func (e *Engine) DryRun(ctx context.Context) ([]string, error) {
 			return nil, fmt.Errorf("%s: %w", op, err)
 		}
 
-		// GetBody is set by http.NewRequest for in-memory bodies, and rereading
+		// http.NewRequest sets GetBody for in-memory bodies, and rereading
 		// through it leaves req.Body intact.
 		var body []byte
 		if req.GetBody != nil {

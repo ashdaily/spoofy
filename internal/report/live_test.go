@@ -88,7 +88,7 @@ func TestFormatLatency(t *testing.T) {
 		in   time.Duration
 		want string
 	}{
-		{0, "–"},
+		{0, "-"},
 		{450 * time.Microsecond, "450µs"},
 		{16 * time.Millisecond, "16ms"},
 		{999 * time.Millisecond, "999ms"},
@@ -118,9 +118,8 @@ func TestFormatDuration(t *testing.T) {
 	}
 }
 
-// The panel is only rendered at a terminal, but it must not panic on any input
-// — including the all-zero snapshot present for the first half second of every
-// single run.
+// The panel only renders at a terminal, but it must not panic on any input,
+// including the all-zero snapshot present for the first half second of a run.
 func TestPanelHandlesAnEmptySnapshot(t *testing.T) {
 	live := NewLive(&bytes.Buffer{}, "http://localhost:8080", "constant 10/s", time.Millisecond)
 	live.tty = true

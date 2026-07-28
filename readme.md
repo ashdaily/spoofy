@@ -23,15 +23,15 @@ You built a Grafana dashboard for staging. It's empty. You wrote an alert rule.
 You can't tell if it works without deliberately breaking something, so you click
 around by hand until a graph twitches.
 
-Load testing tools don't help. **k6 and Vegeta answer "can it handle 10k RPS" —
-a question you ask occasionally.** Spoofy answers **"does this environment look
-alive"** — a condition you want permanently true.
+Load testing tools don't help here. k6 and Vegeta answer "can it handle 10k
+RPS", a question you ask occasionally. Spoofy answers "does this environment
+look alive", which is a condition you want permanently true.
 
 ```bash
 spoofy run --url https://staging.acme.com --rate 20/s --shape diurnal
 ```
 
-That's it. It runs until you stop it.
+It runs until you stop it.
 
 ---
 
@@ -83,14 +83,14 @@ with the dashboard already loaded. Nothing to configure.
 
 | | |
 |---|---|
-| **http://localhost:3000** | Grafana — traffic, latency percentiles, per-endpoint breakdown |
+| **http://localhost:3000** | Grafana: traffic, latency percentiles, per-endpoint breakdown |
 | **http://localhost:9090** | Prometheus |
 | **http://localhost:9091/metrics** | Spoofy's own metrics |
 | **http://localhost:8080/openapi.yaml** | The demo API's spec |
 
-The demo API has varied latency, one deliberately slow endpoint, and a 2% error
-rate — because a target that always returns 200 in 1ms produces a dashboard with
-nothing on it worth looking at.
+The demo API has varied latency, one slow endpoint, and a 2% error rate, so the
+dashboard has something on it. A target that always returns 200 in 1ms does not
+teach you anything about your monitoring.
 
 ---
 
@@ -127,12 +127,11 @@ flowchart LR
 example → examples → default → const → enum → format → pattern → type
 ```
 
-A generator that emits syntactically valid nonsense produces an environment full
-of 400s, which is worse than no traffic — the dashboards look busy and prove
-nothing. Spec-provided examples are real values written by someone who knows the
-API, so they win. `pattern` gets a small regex engine, because the fields specs
-constrain that way (SKUs, account numbers, postcodes) are exactly the ones where
-a random string is a guaranteed rejection.
+Syntactically valid nonsense produces an environment full of 400s, where the
+dashboards look busy and prove nothing. Spec examples are real values written by
+someone who knows the API, so they take precedence. `pattern` gets a small regex
+engine, since the fields specs constrain that way (SKUs, account numbers,
+postcodes) are the ones where a random string is rejected outright.
 
 ---
 
@@ -154,68 +153,306 @@ traffic:
 | `ramp` | `▁▂▃▄▅▆▇███████` | Watching an autoscaler react, or finding where latency turns. |
 | `spike` | `▂▂█▂▂▂▂█▂▂▂▂` | Tripping alert rules on purpose. |
 
-`diurnal` is aligned to **wall-clock time of day**, not to process start —
+`diurnal` is aligned to wall-clock time of day rather than process start, so
 restarting at 3pm resumes at afternoon levels instead of putting a cliff in the
-graph that looks like an incident.
+graph that reads as an incident.
 
-<details>
-<summary><b>Shape parameters</b></summary>
-
-```yaml
-traffic:
-  shape: diurnal
-  amplitude: 0.6        # peak is 1.6x the average, trough 0.4x
-  period: 24h
-
-  # shape: ramp
-  from: 5/s
-  to: 50/s
-  over: 30m
-
-  # shape: spike
-  spike_every: 30m
-  spike_for: 2m
-  spike_rate: 100/s
-```
-</details>
+Each shape takes a few parameters of its own. See [traffic](#traffic) in the
+configuration reference below.
 
 ---
 
 ## Configuration
 
-Everything works from flags. A config file is for when you want more, never a
-prerequisite. `spoofy init` writes one that documents itself.
+Spoofy runs entirely from flags. A config file is optional, and useful once you
+want endpoint weights, auth, or settings you'd rather commit than retype.
+
+```bash
+spoofy init            # writes spoofy.yaml
+spoofy run             # picks it up automatically
+```
+
+Flags override the file, so you can keep a committed baseline and vary one thing
+on the command line.
+
+### A complete file
+
+Every key Spoofy understands, in one place. Only `target` and `spec` are
+required; the rest are shown at their defaults.
 
 ```yaml
-# spoofy.yaml
 target: https://staging.acme.com
 spec: ./openapi.yaml
 
 traffic:
-  rate: 1200/m          # write it how you say it: 20/s, 1200/m, 72000/h
-  shape: diurnal
+  rate: 10/s
+  shape: constant
   concurrency: 10
   timeout: 10s
 
-endpoints:              # first match wins, like a routing table
+  # diurnal only
+  amplitude: 0.6
+  period: 24h
+
+  # ramp only
+  from: 5/s
+  to: 50/s
+  over: 30m
+
+  # spike only
+  spike_every: 30m
+  spike_for: 2m
+  spike_rate: 100/s
+
+endpoints:
   - match: /admin/*
     skip: true
   - match: /orders
-    weight: 5           # five times as often as everything else
+    weight: 5
 
 auth:
-  bearer: ${API_TOKEN}  # ${VARS} expand at startup — safe to commit
+  bearer: ${API_TOKEN}
+  basic:
+    user: ${API_USER}
+    pass: ${API_PASS}
+  headers:
+    X-Tenant: acme
 
 safety:
   allow_writes: false
+  allow_prod: false
   max_rate: 200/s
+
+metrics:
+  addr: ":9090"
+  disabled: false
 ```
 
-Flags override the file, because someone typing a flag is being more specific
-than a file checked in months ago.
+### Value formats
+
+| Type | Accepts | Examples |
+|---|---|---|
+| **rate** | a count and a unit; bare numbers are per second | `20/s`, `1200/m`, `72000/h`, `0.5/s`, `20` |
+| **duration** | Go duration syntax; bare numbers are seconds | `30s`, `5m`, `24h`, `1h30m` |
+| **glob** | `*` matches any characters, including `/` | `/admin/*`, `*/{id}`, `/orders` |
+| **`${VAR}`** | replaced from the environment at startup | `${API_TOKEN}` |
+
+Unknown keys are rejected at startup rather than ignored, so a typo fails
+immediately instead of quietly changing nothing.
+
+### Reference
+
+#### Top level
+
+| Key | Default | Description |
+|---|---|---|
+| `target` | required | Base URL traffic is sent to. Include any path prefix, e.g. `https://staging.acme.com/v1`. |
+| `spec` | discovered | OpenAPI document: a file path or an `http(s)` URL. If omitted, Spoofy looks for `openapi.yaml`, `openapi.json`, `swagger.yaml`, or `swagger.json` in the working directory. |
+
+#### traffic
+
+| Key | Default | Description |
+|---|---|---|
+| `rate` | `10/s` | Average request rate. Shapes vary around this value without changing the average. |
+| `shape` | `constant` | `constant`, `diurnal`, `ramp`, or `spike`. |
+| `concurrency` | `10` | Requests in flight at once. A ceiling, not a target. |
+| `timeout` | `10s` | Per-request timeout. |
+| `amplitude` | `0.6` | *diurnal.* How far traffic swings from the average, between 0 and 1. At `0.6` the peak is 1.6x the average and the trough 0.4x. |
+| `period` | `24h` | *diurnal.* Length of one cycle. |
+| `from` | `rate` | *ramp.* Starting rate. |
+| `to` | required | *ramp.* Rate to climb to, then hold. |
+| `over` | required | *ramp.* How long the climb takes. |
+| `spike_every` | required | *spike.* Interval between bursts. |
+| `spike_for` | required | *spike.* How long each burst lasts. Must be shorter than `spike_every`. |
+| `spike_rate` | required | *spike.* Rate during a burst. |
+
+#### endpoints
+
+A list of rules matched against templated paths such as `/orders/{id}`. Rules are
+checked in order and the first match wins, like a routing table.
+
+| Key | Default | Description |
+|---|---|---|
+| `match` | required | Glob matched against the templated path. |
+| `skip` | `false` | Exclude matching endpoints entirely. |
+| `weight` | `1` | Relative selection frequency. `5` means five times as often as an unweighted endpoint. Weight only biases selection; use `skip` to exclude. |
+
+#### auth
+
+Applied to every generated request. Explicit `headers` are set last, so they win
+over anything else.
+
+| Key | Description |
+|---|---|
+| `bearer` | Sent as `Authorization: Bearer <value>`. |
+| `basic.user`, `basic.pass` | HTTP basic credentials. |
+| `headers` | Arbitrary headers, as a name-to-value map. |
+
+#### safety
+
+| Key | Default | Description |
+|---|---|---|
+| `allow_writes` | `false` | Permit `POST`, `PUT`, `PATCH`, and `DELETE`. Without it Spoofy sends only `GET`, `HEAD`, and `OPTIONS`. |
+| `allow_prod` | `false` | Permit a target whose hostname contains `prod`, `production`, or `prd`. |
+| `max_rate` | `200/s` | Ceiling on `rate`, `to`, and `spike_rate`. Startup fails if any exceeds it. |
+
+#### metrics
+
+| Key | Default | Description |
+|---|---|---|
+| `addr` | `:9090` | Listen address for `/metrics` and `/healthz`. |
+| `disabled` | `false` | Turn the endpoint off entirely. |
+
+### Examples
+
+<details open>
+<summary><b>Minimal</b></summary>
+
+Enough to run. Everything else takes its default.
+
+```yaml
+target: http://localhost:8080
+spec: ./openapi.yaml
+```
+</details>
 
 <details>
-<summary><b>All flags</b></summary>
+<summary><b>Staging that looks like production</b></summary>
+
+A working day's rhythm, with the endpoint mix biased the way real users behave:
+lots of reads on the listing endpoint, occasional detail views, health checks
+excluded so they don't drown the graphs.
+
+```yaml
+target: https://staging.acme.com/v1
+spec: https://staging.acme.com/v1/openapi.json
+
+traffic:
+  rate: 25/s
+  shape: diurnal
+  amplitude: 0.7          # quiet nights, busy afternoons
+  concurrency: 16
+
+endpoints:
+  - match: /health
+    skip: true
+  - match: /admin/*
+    skip: true
+  - match: /products
+    weight: 10
+  - match: /products/{id}
+    weight: 4
+  - match: /cart
+    weight: 2
+
+auth:
+  bearer: ${STAGING_TOKEN}
+```
+</details>
+
+<details>
+<summary><b>Tripping an alert on purpose</b></summary>
+
+A steady baseline with a burst every ten minutes. Set `spike_rate` above the
+threshold in your alert rule, then watch whether the alert actually fires and,
+just as importantly, whether it resolves.
+
+```yaml
+target: http://localhost:8080
+spec: ./openapi.yaml
+
+traffic:
+  rate: 5/s
+  shape: spike
+  spike_every: 10m
+  spike_for: 90s
+  spike_rate: 150/s
+  concurrency: 32
+
+safety:
+  max_rate: 200/s         # spike_rate is checked against this
+```
+</details>
+
+<details>
+<summary><b>Finding where latency turns</b></summary>
+
+Climb from a gentle rate to a heavy one over half an hour, then hold. Watch the
+latency percentiles for the point where the curve bends.
+
+```yaml
+target: http://localhost:8080
+spec: ./openapi.yaml
+
+traffic:
+  shape: ramp
+  from: 5/s
+  to: 120/s
+  over: 30m
+  concurrency: 64
+
+safety:
+  max_rate: 200/s
+```
+</details>
+
+<details>
+<summary><b>Enabling writes without regret</b></summary>
+
+Writes are off by default. When you turn them on, exclude the destructive
+endpoints explicitly. Run it with `--dry-run` first and read what comes back.
+
+```yaml
+target: http://localhost:8080
+spec: ./openapi.yaml
+
+traffic:
+  rate: 8/s
+  shape: constant
+
+endpoints:
+  - match: /admin/*
+    skip: true
+  - match: /*/purge
+    skip: true
+  - match: /users/{id}      # no DELETE against real user records
+    skip: true
+  - match: /orders
+    weight: 3
+
+safety:
+  allow_writes: true
+```
+</details>
+
+<details>
+<summary><b>Behind a gateway, multi-tenant</b></summary>
+
+Credentials come from the environment, so the file itself is safe to commit.
+
+```yaml
+target: https://gateway.internal/api
+spec: ./specs/orders-v2.yaml
+
+traffic:
+  rate: 1200/m            # same as 20/s, written the way the team says it
+  shape: diurnal
+
+auth:
+  headers:
+    X-Api-Key: ${GATEWAY_KEY}
+    X-Tenant-Id: ${TENANT_ID}
+    X-Trace-Sampling: always
+
+metrics:
+  addr: ":9464"           # matches the OTel collector convention here
+```
+</details>
+
+### Flags
+
+<details>
+<summary><b>Full list</b></summary>
 
 ```
 --url, -u             target base URL
@@ -225,7 +462,7 @@ than a file checked in months ago.
 --shape               constant | diurnal | ramp | spike
 --concurrency         requests in flight at once
 --timeout             per-request timeout
---duration            stop after this long (default: forever)
+--duration            stop after this long (default: run forever)
 --only / --skip       path globs; * spans /
 --allow-writes        exercise POST/PUT/PATCH/DELETE
 --allow-prod          permit a production-looking hostname
@@ -237,28 +474,31 @@ than a file checked in months ago.
 --metrics-addr        Prometheus listen address (default :9090)
 --startup-timeout     how long to wait for a remote spec
 ```
+
+`--only` and `--skip` append to any `endpoints` rules from the config file
+rather than replacing them.
 </details>
 
 ---
 
 ## Safety
 
-Spoofy runs unattended for weeks. A bad default isn't a bad run, it's a bad
-month — so the defaults refuse rather than surprise.
+Spoofy runs unattended for weeks, so a bad default costs a month rather than one
+run. These defaults refuse rather than surprise.
 
 | Guard | Behaviour |
 |---|---|
-| **Read-only** | Only `GET`/`HEAD`/`OPTIONS` until `allow_writes: true`. A daemon quietly POSTing rows into staging for a week is a data-loss incident. |
+| **Read-only** | Only `GET`/`HEAD`/`OPTIONS` until `allow_writes: true`. A daemon POSTing generated rows into staging for a week is a data-loss incident. |
 | **Production refusal** | A hostname containing `prod`/`production`/`prd` is rejected unless `allow_prod: true`. |
 | **Rate ceiling** | `max_rate` (200/s default) so a typo can't flatten an environment overnight. |
 | **Target backoff** | Stops hammering a service that's already failing, and recovers when it returns. |
 | **Unknown config keys error** | A silently-ignored typo means a week of doing the wrong thing. |
 
-Spoofy also tells you what it's *not* doing, so a filtered-down run never
-masquerades as a healthy one:
+Spoofy also states what it is not doing, so a filtered-down run cannot pass for
+a healthy one:
 
 ```
-endpoints 5 of 8  — skipped 3 writes (use --allow-writes)
+endpoints 5 of 8, skipped 3 writes (use --allow-writes)
 ```
 
 ---
@@ -276,14 +516,14 @@ Served at `:9090/metrics`, plus `/healthz` for probes.
 | `spoofy_target_rate` | What the shape is currently asking for |
 | `spoofy_requests_in_flight` | Outstanding requests |
 
-`path` is always the **templated** form (`/pets/{petId}`), never the concrete
-URL. That's the difference between a working Prometheus and one that falls over
-in a day.
+`path` is always the templated form (`/pets/{petId}`), never the concrete URL.
+Labelling on concrete URLs adds a time series per id and takes Prometheus down
+within a day.
 
-> **Compare what Spoofy sent against what your app reports receiving.** A gap
-> between the two is a real finding: dropped requests, broken instrumentation, a
-> misconfigured scrape. That makes Spoofy a way to validate your observability
-> stack, not just decorate it.
+> Compare what Spoofy sent against what your app reports receiving. A gap
+> between the two is a real finding: dropped requests, broken instrumentation,
+> or a misconfigured scrape. It makes Spoofy a way to check your observability
+> stack rather than just populate it.
 
 ---
 
@@ -347,27 +587,27 @@ spec on startup, and keeps flat memory over long runs.
 
 ## What Spoofy is not
 
-Being straight about this saves you an afternoon.
+Worth knowing before you adopt it.
 
-- **Not a load tester.** It's built for realism at a modest rate, not for
-  throughput records. Use k6 or Vegeta for "can it handle 10k RPS".
+- **Not a load tester.** Built for realism at a modest rate, not throughput
+  records. Use k6 or Vegeta for "can it handle 10k RPS".
 - **It cannot manufacture 5xx.** Spoofy is a client. It can reliably drive
-  **volume**, **latency**, **4xx rates**, and **traffic mix**. Genuine server
-  errors need your app's own fault injection or a service mesh fault filter.
-- **It does not assert correctness.** It reports what happened; it doesn't
+  volume, latency, 4xx rates, and traffic mix. Genuine server errors need your
+  app's own fault injection or a service mesh fault filter.
+- **It does not assert correctness.** It reports what happened; it does not
   decide whether your API is right. See the roadmap.
-- **OpenAPI 3.x only.** Swagger 2.0 isn't supported yet.
+- **OpenAPI 3.x only.** Swagger 2.0 is not supported yet.
 
 ---
 
 ## Roadmap
 
-- **Stateful scenarios** — `POST /login` → token → `POST /orders` → id →
+- **Stateful scenarios.** `POST /login` → token → `POST /orders` → id →
   `GET /orders/{id}`. Without this, generated traffic against resource endpoints
   is largely 404s. This is the big one.
-- **Alert exercising** — drive traffic until a named Prometheus alert fires,
+- **Alert exercising.** Drive traffic until a named Prometheus alert fires,
   assert it fired, stop, assert it resolved.
-- **Response validation as a metric** — surface spec violations without turning
+- **Response validation as a metric,** surfacing spec violations without turning
   Spoofy into a test runner.
 - **gRPC and GraphQL.**
 
@@ -383,8 +623,8 @@ make demo      # the full compose stack
 ```
 
 Issues and PRs welcome. If you're adding a traffic shape, it needs a test that
-drives it with an injected clock — a 24-hour cycle should be verifiable in
-microseconds, not 24 hours.
+drives it with an injected clock, so a 24-hour cycle is verifiable in
+microseconds rather than 24 hours.
 
 ## License
 

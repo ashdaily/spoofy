@@ -1,15 +1,12 @@
 // Package scheduler decides how much traffic to send and when.
 //
-// This is the part of Spoofy that a load-testing tool does not have. k6 or
-// Vegeta answer "can it handle N requests per second", a question you ask
-// occasionally, so a constant rate or a linear ramp is enough. Spoofy answers
-// "does this environment look alive", a condition you want permanently true —
-// and a flat line is not what alive looks like. Alert thresholds tuned against
-// a flat line fire the moment real traffic arrives.
+// Load-testing tools answer "can it handle N requests per second", so a
+// constant rate or a linear ramp covers them. Spoofy answers "does this
+// environment look alive", and a flat line is not what alive looks like. Alert
+// thresholds tuned against one fire as soon as real traffic arrives.
 //
-// Shapes are pure functions of time. That is deliberate: a 24-hour diurnal
-// cycle is testable in microseconds if RateAt is a function rather than
-// something that reads the clock itself.
+// Shapes are pure functions of time, so a 24-hour cycle is testable in
+// microseconds instead of 24 hours.
 package scheduler
 
 import (
@@ -24,13 +21,13 @@ import (
 type Shape interface {
 	// RateAt returns requests per second at now, for a run that began at start.
 	RateAt(now, start time.Time) float64
-	// Describe is a one-line human summary, shown at startup so an operator can
-	// confirm the config means what they thought.
+	// Describe is a one-line summary shown at startup, so an operator can check
+	// the config means what they thought.
 	Describe() string
 }
 
-// Constant holds a steady rate. The default, and the right choice when you
-// want a predictable baseline rather than a realistic one.
+// Constant holds a steady rate. The default, and the right choice for a
+// predictable baseline.
 type Constant struct{ Rate float64 }
 
 func (c Constant) RateAt(_, _ time.Time) float64 { return c.Rate }
@@ -40,15 +37,13 @@ func (c Constant) Describe() string {
 
 // Diurnal is a sine wave over a day: busy afternoons, quiet nights.
 //
-// Two properties matter. First, the mean over a full cycle is exactly Average,
-// because sine integrates to zero — so switching from constant to diurnal does
-// not change how much total traffic you generate, only its distribution. That
-// is what lets someone try shapes without recalculating anything.
+// Two properties matter. The mean over a full cycle is exactly Average, since
+// sine integrates to zero, so moving from constant to diurnal redistributes
+// traffic without changing the total.
 //
-// Second, it is aligned to wall-clock time of day rather than to process
-// start. Starting the daemon at 3pm should put you at afternoon levels
-// immediately, not at the bottom of a fresh cycle — otherwise every restart
-// creates a traffic artefact that looks like an incident.
+// It is also aligned to wall-clock time of day rather than process start.
+// Starting at 3pm lands at afternoon levels immediately; otherwise every
+// restart puts an artefact in the graph that reads as an incident.
 type Diurnal struct {
 	Average   float64
 	Amplitude float64       // 0.6 => peak 1.6x average, trough 0.4x
@@ -80,7 +75,7 @@ func (d Diurnal) Describe() string {
 }
 
 // Ramp climbs from one rate to another over a period, then holds. Useful for
-// watching an autoscaler react, or for finding the point where latency turns.
+// watching an autoscaler react, or finding where latency turns.
 type Ramp struct {
 	From float64
 	To   float64
@@ -107,9 +102,9 @@ func (r Ramp) Describe() string {
 		settings.Rate(r.From), settings.Rate(r.To), r.Over)
 }
 
-// Spike holds a baseline and bursts periodically. This is the shape that makes
-// alert rules testable: set the burst above your threshold and watch whether
-// the alert actually fires.
+// Spike holds a baseline and bursts periodically, which is what makes alert
+// rules testable: set the burst above the threshold and see whether the alert
+// fires.
 type Spike struct {
 	Base  float64
 	Peak  float64
@@ -136,9 +131,9 @@ func (s Spike) Describe() string {
 		settings.Rate(s.Base), settings.Rate(s.Peak), s.For, s.Every)
 }
 
-// minRate keeps a shape from reaching exactly zero. A rate limiter set to zero
-// blocks forever, so a diurnal trough at amplitude 1.0 would wedge every worker
-// until dawn — a hang that looks identical to a crash.
+// minRate keeps a shape off exactly zero. A rate limiter set to zero blocks
+// forever, so a diurnal trough at amplitude 1.0 would wedge every worker until
+// dawn, which looks identical to a crash.
 const minRate = 0.001
 
 func clampRate(v float64) float64 {
@@ -150,9 +145,9 @@ func clampRate(v float64) float64 {
 
 // FromConfig builds the Shape described by a validated config.
 //
-// It assumes settings.Config.Validate has already run; missing shape parameters
-// here mean a validation gap, not a user error, so it falls back to something
-// safe rather than failing at runtime inside a daemon.
+// It assumes Validate has already run. A missing parameter here is a validation
+// gap rather than user error, so it falls back to something safe instead of
+// failing at runtime.
 func FromConfig(cfg *settings.Config) Shape {
 	t := cfg.Traffic
 	avg := t.Rate.PerSecond()

@@ -78,7 +78,7 @@ func TestDiurnalIsWallClockAlignedNotStartAligned(t *testing.T) {
 }
 
 // Amplitude 1.0 puts the mathematical trough at exactly zero. A rate limiter
-// set to zero blocks forever, so every worker would wedge until dawn — a hang
+// set to zero blocks forever, so every worker would wedge until dawn, which is
 // indistinguishable from a crash.
 func TestDiurnalNeverReachesZero(t *testing.T) {
 	d := Diurnal{Average: 10, Amplitude: 1.0, Period: 24 * time.Hour, PeakHour: 15}
