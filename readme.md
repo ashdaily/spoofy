@@ -8,10 +8,12 @@ Point it at an OpenAPI spec. It generates continuous, production-shaped traffic
 so your dashboards have signal and your alert thresholds can be tuned against
 something other than a flat line.
 
-[![CI](https://github.com/ashdaily/spoofy/actions/workflows/ci.yml/badge.svg)](https://github.com/ashdaily/spoofy/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/ashdaily/spoofy.svg)](https://pkg.go.dev/github.com/ashdaily/spoofy)
-[![Go Report Card](https://goreportcard.com/badge/github.com/ashdaily/spoofy)](https://goreportcard.com/report/github.com/ashdaily/spoofy)
-![License](https://img.shields.io/badge/license-Apache--2.0-blue)
+<p>
+  <a href="https://github.com/ashdaily/spoofy/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ashdaily/spoofy/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://pkg.go.dev/github.com/ashdaily/spoofy"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/ashdaily/spoofy.svg"></a>
+  <img alt="Go 1.26+" src="https://img.shields.io/badge/go-1.26%2B-00ADD8?logo=go&logoColor=white">
+  <a href="LICENSE"><img alt="Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
+</p>
 
 </div>
 
