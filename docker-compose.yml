@@ -1,11 +1,3 @@
-# A complete Spoofy demo: a target API, Spoofy generating traffic against it,
-# Prometheus scraping both, and Grafana with a dashboard already loaded.
-#
-#   docker compose up
-#   open http://localhost:3000
-#
-# Nothing needs configuring first.
-
 services:
   # The API under test. Varied latency, one slow endpoint, and a small
   # synthetic error rate, so the dashboard has something on it.
@@ -28,16 +20,14 @@ services:
       - run
       - --spec=http://petstore:8080/openapi.yaml
       - --url=http://petstore:8080/v1
-      - --rate=25/s
+      - --rate=100/s
       - --shape=diurnal
-      - --concurrency=8
+      - --concurrency=10
       - --metrics-addr=:9090
     ports:
       - "9091:9090"
     depends_on:
       - petstore
-    # No healthcheck gate needed: Spoofy retries an unreachable spec on startup,
-    # because under compose and Kubernetes alike everything starts at once.
     restart: unless-stopped
 
   prometheus:
